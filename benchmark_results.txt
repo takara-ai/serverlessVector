@@ -1,0 +1,21 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/takarajordan/serverlessVector
+cpu: Apple M1
+BenchmarkDotProduct/Size128-8         	19502905	        55.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size128-8         	19408681	        77.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size128-8         	19345444	        54.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size512-8         	 5682855	       211.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size512-8         	 5645042	       210.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size512-8         	 5671376	       211.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size1536-8        	 1884777	       635.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size1536-8        	 1887020	       636.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size1536-8        	 1887240	       636.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSearch-8                     	    7126	    153843 ns/op	   24720 B/op	       5 allocs/op
+BenchmarkSearch-8                     	    7929	    153972 ns/op	   24720 B/op	       5 allocs/op
+BenchmarkSearch-8                     	    7813	    156081 ns/op	   24720 B/op	       5 allocs/op
+BenchmarkCosineSearch-8               	    2870	    406250 ns/op	   24720 B/op	       5 allocs/op
+BenchmarkCosineSearch-8               	    2859	    409917 ns/op	   24720 B/op	       5 allocs/op
+BenchmarkCosineSearch-8               	    2716	    412930 ns/op	   24720 B/op	       5 allocs/op
+PASS
+ok  	github.com/takarajordan/serverlessVector	21.661s
