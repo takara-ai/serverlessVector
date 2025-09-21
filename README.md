@@ -97,10 +97,10 @@ stats := db.GetStats()
 
 | Model | Dimensions | Performance |
 |-------|------------|-------------|
-| OpenAI ada-002 | 1536 | 75 searches/sec |
-| OpenAI text-embedding-3-small | 1536 | 75 searches/sec |
-| Sentence Transformers | 384-768 | 150-300 searches/sec |
-| BERT | 768 | 150 searches/sec |
+| OpenAI ada-002 | 1536 | 75 searches/s |
+| OpenAI text-embedding-3-small | 1536 | 75 searches/s |
+| Sentence Transformers | 384-768 | 150-300 searches/s |
+| BERT | 768 | 150 searches/s |
 
 ## Use Cases
 
