@@ -13,7 +13,7 @@ func (db *VectorDB) Search(query interface{}, topK ...int) (*SearchResult, error
 	if len(topK) > 0 {
 		k = topK[0]
 	}
-	return db.searchCore(query, k, false, nil)
+	return db.searchCore(query, k, true, nil)
 }
 
 // BatchSearch performs search on multiple queries efficiently
@@ -25,7 +25,7 @@ func (db *VectorDB) BatchSearch(queries map[string]interface{}, topK ...int) (ma
 	
 	results := make(map[string]*SearchResult)
 	for queryID, query := range queries {
-		result, err := db.searchCore(query, k, false, nil)
+		result, err := db.searchCore(query, k, true, nil)
 		if err != nil {
 			return nil, fmt.Errorf("search failed for query %s: %v", queryID, err)
 		}
