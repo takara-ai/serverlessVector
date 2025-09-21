@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/takarajordan/serverlessVector"
+	"github.com/takara-ai/serverlessVector"
 )
 
 func generateRandomVector(dimension int) []float32 {

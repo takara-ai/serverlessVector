@@ -5,7 +5,7 @@ From the Frontier Research Team at **Takara.ai** we present a fast, in-memory ve
 ## Installation
 
 ```bash
-go get github.com/takarajordan/serverlessVector
+go get github.com/takara-ai/serverlessVector
 ```
 
 ## Quick Start
@@ -16,7 +16,7 @@ package main
 import (
     "fmt"
     "log"
-    "github.com/takarajordan/serverlessVector"
+    "github.com/takara-ai/serverlessVector"
 )
 
 func main() {

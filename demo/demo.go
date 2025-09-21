@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/takarajordan/serverlessVector"
+	"github.com/takara-ai/serverlessVector"
 )
 
 // Simulate text embeddings for different categories
