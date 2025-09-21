@@ -12,6 +12,7 @@ jobs:
   release:
     # calls your central workflow
     uses: takara-ai/.github/.github/workflows/release-please.yml@main
+    # set the release type to go
     with:
       release-type: go
     # inherit the caller's GITHUB_TOKEN so Release Please can read PRs/commits
