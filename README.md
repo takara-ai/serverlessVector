@@ -20,8 +20,8 @@ import (
 )
 
 func main() {
-    // Create database with dimension 384 (OpenAI embeddings)
-    db := serverlessVector.NewVectorDB(384)
+    // Create database with 4 dimensions (example)
+    db := serverlessVector.NewVectorDB(4)
 
     // Add vectors
     db.Add("cat", []float32{0.1, 0.3, 0.2, 0.4})
