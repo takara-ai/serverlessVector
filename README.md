@@ -44,7 +44,7 @@ func main() {
 
 ```go
 db := NewVectorDB(384)                    // Fixed dimension
-db := NewVectorDB(384, DotProduct)       // Custom distance function
+db := NewVectorDB(384, serverlessVector.DotProduct)       // Custom distance function
 db := NewVectorDB(0)                     // Flexible dimensions
 ```
 
