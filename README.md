@@ -1,4 +1,4 @@
-<img src="https://takara.ai/images/logo-24/TakaraAi.svg" width="200" alt="Takara.ai Logo" />
+<img src="https://github.com/takara-ai/serverlessVector/blob/main/media/serverlessVector.svg" width="200" alt="Takara.ai Logo" />
 
 From the Frontier Research Team at **Takara.ai** we present a fast, in-memory vector database optimized for serverless environments. Store and search vectors with minimal setup and predictable performance.
 
