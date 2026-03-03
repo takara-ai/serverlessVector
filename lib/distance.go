@@ -21,11 +21,7 @@ func dotProduct32(a, b []float32) float64 {
 }
 
 func norm32(a []float32) float64 {
-	var sum float64
-	for _, v := range a {
-		sum += float64(v) * float64(v)
-	}
-	return math.Sqrt(sum)
+	return math.Sqrt(dotProduct32(a, a))
 }
 
 func (db *VectorDB) distanceFloat32(a, b []float32, distanceFunc DistanceFunction) float64 {
@@ -48,8 +44,10 @@ func (db *VectorDB) distanceFloat32(a, b []float32, distanceFunc DistanceFunctio
 	}
 }
 
+func sameLen32(a, b []float32) bool { return len(a) == len(b) }
+
 func euclidean32(a, b []float32) float64 {
-	if len(a) != len(b) {
+	if !sameLen32(a, b) {
 		return math.Inf(1)
 	}
 	var sum float64
@@ -61,7 +59,7 @@ func euclidean32(a, b []float32) float64 {
 }
 
 func manhattan32(a, b []float32) float64 {
-	if len(a) != len(b) {
+	if !sameLen32(a, b) {
 		return math.Inf(1)
 	}
 	var sum float64
