@@ -1,21 +1,29 @@
+Locking improvements (from feedback):
+- BatchAdd: vector building done outside the lock; write lock held only for map merge (copy + assign).
+  Reduces write lock duration so concurrent readers see lower tail latency during batch loads.
+- GetStats: snapshot (dim/type per vector) taken under RLock; stats computation runs outside the lock.
+- Search: still holds RLock for full search (snapshot would copy all vector data per search and regress throughput).
+
+Benchmarks (after improvements):
 goos: darwin
 goarch: arm64
 pkg: github.com/takara-ai/serverlessVector
 cpu: Apple M1
-BenchmarkDotProduct/Size128-8         	19502905	        55.52 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size128-8         	19408681	        77.51 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size128-8         	19345444	        54.69 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size512-8         	 5682855	       211.1 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size512-8         	 5645042	       210.8 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size512-8         	 5671376	       211.0 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size1536-8        	 1884777	       635.7 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size1536-8        	 1887020	       636.0 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size1536-8        	 1887240	       636.7 ns/op	       0 B/op	       0 allocs/op
-BenchmarkSearch-8                     	    7126	    153843 ns/op	   24720 B/op	       5 allocs/op
-BenchmarkSearch-8                     	    7929	    153972 ns/op	   24720 B/op	       5 allocs/op
-BenchmarkSearch-8                     	    7813	    156081 ns/op	   24720 B/op	       5 allocs/op
-BenchmarkCosineSearch-8               	    2870	    406250 ns/op	   24720 B/op	       5 allocs/op
-BenchmarkCosineSearch-8               	    2859	    409917 ns/op	   24720 B/op	       5 allocs/op
-BenchmarkCosineSearch-8               	    2716	    412930 ns/op	   24720 B/op	       5 allocs/op
+BenchmarkSearch_Float32-8   	      93	  11638501 ns/op	 2930412 B/op	  717622 allocs/op
+BenchmarkSearch_Float32-8   	     100	  12667582 ns/op	 2930341 B/op	  717622 allocs/op
+BenchmarkSearch_Float32-8   	      99	  11597656 ns/op	 2930350 B/op	  717622 allocs/op
+BenchmarkSearch_Float64-8   	      94	  12454954 ns/op	 5800821 B/op	  717622 allocs/op
+BenchmarkSearch_Float64-8   	      90	  12598296 ns/op	 5800816 B/op	  717622 allocs/op
+BenchmarkSearch_Float64-8   	      94	  12505446 ns/op	 5800819 B/op	  717622 allocs/op
+BenchmarkBatchAdd-8         	     894	   1504117 ns/op	 2629128 B/op	   59108 allocs/op
+BenchmarkBatchAdd-8         	     886	   1327450 ns/op	 2629128 B/op	   59108 allocs/op
+BenchmarkBatchAdd-8         	     894	   1325132 ns/op	 2629129 B/op	   59108 allocs/op
 PASS
-ok  	github.com/takara-ai/serverlessVector	21.661s
+ok  	github.com/takara-ai/serverlessVector	12.388s
+
+Previous (reference from earlier run):
+BenchmarkDotProduct/Size128-8         	19502905	        55.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size512-8         	 5682855	       211.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDotProduct/Size1536-8        	 1884777	       635.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSearch-8                     	    7126	    153843 ns/op	   24720 B/op	       5 allocs/op
+BenchmarkCosineSearch-8               	    2870	    406250 ns/op	   24720 B/op	       5 allocs/op

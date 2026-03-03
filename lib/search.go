@@ -35,7 +35,7 @@ func (db *VectorDB) BatchSearch(queries map[string]interface{}, topK ...int) (ma
 	return results, nil
 }
 
-// searchCore is the shared backend implementation
+// searchCore is the shared backend implementation.
 func (db *VectorDB) searchCore(query interface{}, topK int, includeMetadata bool, filterFunc func(*Vector) bool) (*SearchResult, error) {
 	querySlice, queryType, err := convertToInterfaceSlice(query)
 	if err != nil {
@@ -59,7 +59,6 @@ func (db *VectorDB) searchCore(query interface{}, topK int, includeMetadata bool
 	results := make([]SimilarityResult, 0, len(db.vectors))
 
 	for _, vector := range db.vectors {
-		// Apply filter if provided
 		if filterFunc != nil && !filterFunc(vector) {
 			continue
 		}
@@ -68,7 +67,6 @@ func (db *VectorDB) searchCore(query interface{}, topK int, includeMetadata bool
 			return nil, fmt.Errorf("query vector dimension %d does not match stored vector dimension %d", len(querySlice), len(vector.Data))
 		}
 
-		// Skip if types don't match
 		if vector.Type != queryType {
 			continue
 		}
@@ -87,7 +85,6 @@ func (db *VectorDB) searchCore(query interface{}, topK int, includeMetadata bool
 		results = append(results, result)
 	}
 
-	// Sort by score (higher is better for similarity, lower for distance)
 	sort.Slice(results, func(i, j int) bool {
 		switch db.distFunc {
 		case EuclideanDistance, ManhattanDistance:
@@ -97,7 +94,6 @@ func (db *VectorDB) searchCore(query interface{}, topK int, includeMetadata bool
 		}
 	})
 
-	// Return top K results
 	if len(results) > topK {
 		results = results[:topK]
 	}

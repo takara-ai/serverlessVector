@@ -1,21 +1,33 @@
 package lib
 
-// GetStats returns database statistics
+// statsSnapshotEntry holds minimal per-vector data for stats computation outside the lock.
+type statsSnapshotEntry struct {
+	dimLen int
+	vecType VectorType
+}
+
+// GetStats returns database statistics.
+// It snapshots under RLock then computes stats outside the lock to reduce lock hold time.
 func (db *VectorDB) GetStats() map[string]interface{} {
 	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	totalVectors := len(db.vectors)
+	snapshot := make([]statsSnapshotEntry, 0, totalVectors)
+	for _, vector := range db.vectors {
+		snapshot = append(snapshot, statsSnapshotEntry{dimLen: len(vector.Data), vecType: vector.Type})
+	}
+	distFunc := db.distFunc
+	dimension := db.dimension
+	db.mu.RUnlock()
+
 	totalDimensions := 0
 	memoryUsage := int64(0)
 	float32Count := 0
 	float64Count := 0
 
-	for _, vector := range db.vectors {
-		totalDimensions += len(vector.Data)
-		// Rough memory estimation: interface{} overhead (16 bytes) + type size per element
+	for _, entry := range snapshot {
+		totalDimensions += entry.dimLen
 		var typeSize int
-		switch vector.Type {
+		switch entry.vecType {
 		case Float32:
 			typeSize = 4
 			float32Count++
@@ -23,12 +35,10 @@ func (db *VectorDB) GetStats() map[string]interface{} {
 			typeSize = 8
 			float64Count++
 		}
-		// interface{} is 16 bytes, plus the actual data
-		vectorMem := int64(16*len(vector.Data) + typeSize*len(vector.Data) + 256) // Rough overhead estimate
+		vectorMem := int64(16*entry.dimLen + typeSize*entry.dimLen + 256)
 		memoryUsage += vectorMem
-		// Ensure minimum memory usage for testing
 		if memoryUsage == 0 && totalVectors > 0 {
-			memoryUsage = 1 // At least 1KB for non-empty databases
+			memoryUsage = 1
 		}
 	}
 
@@ -44,7 +54,7 @@ func (db *VectorDB) GetStats() map[string]interface{} {
 		"memory_usage_kb":   int64(float64(memoryUsage) / 1024.0),
 		"float32_count":     float32Count,
 		"float64_count":     float64Count,
-		"distance_function": db.distFunc.String(),
-		"dimension":         db.dimension,
+		"distance_function": distFunc.String(),
+		"dimension":         dimension,
 	}
 }

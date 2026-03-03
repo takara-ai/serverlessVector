@@ -175,19 +175,23 @@ func (db *VectorDB) Clear() {
 }
 
 
-// BatchAdd adds multiple vectors efficiently in a single operation
+// BatchAdd adds multiple vectors efficiently in a single operation.
+// New vectors are built outside the lock; the write lock is held only for the map merge,
+// so tail latencies for concurrent readers are not raised by long write lock duration.
 func (db *VectorDB) BatchAdd(vectors map[string]interface{}, metadata map[string]VectorMetadata) error {
 	if len(vectors) == 0 {
 		return errors.New("no vectors provided")
 	}
 
-	// Validate all vectors first
+	now := time.Now().Unix()
+	batchMap := make(map[string]*Vector, len(vectors))
+
 	for id, data := range vectors {
 		if id == "" {
 			return errors.New("vector ID cannot be empty")
 		}
 
-		dataSlice, _, err := convertToInterfaceSlice(data)
+		dataSlice, vecType, err := convertToInterfaceSlice(data)
 		if err != nil {
 			return fmt.Errorf("unsupported vector type for %s: %T", id, data)
 		}
@@ -195,14 +199,6 @@ func (db *VectorDB) BatchAdd(vectors map[string]interface{}, metadata map[string
 		if db.dimension > 0 && len(dataSlice) != db.dimension {
 			return fmt.Errorf("vector %s dimension %d does not match expected %d", id, len(dataSlice), db.dimension)
 		}
-	}
-
-	db.mu.Lock()
-	defer db.mu.Unlock()
-
-	now := time.Now().Unix()
-	for id, data := range vectors {
-		dataSlice, vecType, _ := convertToInterfaceSlice(data)
 
 		vector := &Vector{
 			ID:   id,
@@ -213,18 +209,25 @@ func (db *VectorDB) BatchAdd(vectors map[string]interface{}, metadata map[string
 				UpdatedAt: now,
 			},
 		}
-
 		copy(vector.Data, dataSlice)
-
-		// Add metadata if provided
 		if meta, exists := metadata[id]; exists {
 			vector.Metadata = meta
 			vector.Metadata.CreatedAt = now
 			vector.Metadata.UpdatedAt = now
 		}
-
-		db.vectors[id] = vector
+		batchMap[id] = vector
 	}
+
+	db.mu.Lock()
+	newMap := make(map[string]*Vector, len(db.vectors)+len(batchMap))
+	for k, v := range db.vectors {
+		newMap[k] = v
+	}
+	for k, v := range batchMap {
+		newMap[k] = v
+	}
+	db.vectors = newMap
+	db.mu.Unlock()
 
 	return nil
 }

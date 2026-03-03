@@ -299,3 +299,24 @@ func BenchmarkSearch_Float64(b *testing.B) {
 	}
 }
 
+// BenchmarkBatchAdd measures BatchAdd with write lock held only for map merge.
+func BenchmarkBatchAdd(b *testing.B) {
+	dim := 128
+	n := 500
+	vectors := make(map[string]interface{}, n)
+	for i := 0; i < n; i++ {
+		data := make([]float32, dim)
+		for j := range data {
+			data[j] = float32((i+j)%10) * 0.1
+		}
+		vectors[fmt.Sprintf("vec%d", i)] = data
+	}
+
+	db := NewVectorDB(dim)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = db.BatchAdd(vectors, nil)
+		db.Clear()
+	}
+}
+
