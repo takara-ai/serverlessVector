@@ -24,8 +24,12 @@ func main() {
     db := serverlessVector.NewVectorDB(4)
 
     // Add vectors (float32 only, matches embedding APIs)
-    db.Add("cat", []float32{0.1, 0.3, 0.2, 0.4})
-    db.Add("dog", []float32{0.2, 0.4, 0.1, 0.3})
+    if err := db.Add("cat", []float32{0.1, 0.3, 0.2, 0.4}); err != nil {
+        log.Fatal(err)
+    }
+    if err := db.Add("dog", []float32{0.2, 0.4, 0.1, 0.3}); err != nil {
+        log.Fatal(err)
+    }
 
     // Search for similar vectors
     query := []float32{0.15, 0.35, 0.15, 0.25}
@@ -34,9 +38,6 @@ func main() {
         log.Fatal(err)
     }
     fmt.Printf("Found %d similar vectors\n", len(results.Results))
-
-    // Or MMR: relevant but diverse results
-    results, err = db.SearchMMR(query, 5)
 }
 ```
 
@@ -46,78 +47,58 @@ func main() {
 
 ```go
 db := serverlessVector.NewVectorDB(384)                    // Fixed dimension
-db := serverlessVector.NewVectorDB(384, serverlessVector.DotProduct)       // Custom distance function
-db := serverlessVector.NewVectorDB(0)                     // Flexible dimensions
+db := serverlessVector.NewVectorDB(384, serverlessVector.DotProduct)       // Custom distance (CosineSimilarity, DotProduct, EuclideanDistance, ManhattanDistance)
+db := serverlessVector.NewVectorDB(0)                     // Flexible dimensions (no validation)
 ```
 
 ### Operations
 
 ```go
-// Add/Update/Delete
+// Add/Update/Delete (metadata optional on Add/Update)
 err := db.Add("id1", []float32{1.0, 2.0, 3.0})
+err := db.Add("id1", []float32{1.0, 2.0, 3.0}, serverlessVector.VectorMetadata{Tags: map[string]string{"key": "value"}})
+err := db.Update("id1", newData)
 err := db.Update("id1", newData, metadata)
 err := db.Delete("id1")
 
-// Search
-results, err := db.Search(queryVector, 5)
-results, err := db.BatchSearch(queries, 10)
+// Batch add (map[id]vector; metadata map optional)
+err := db.BatchAdd(map[string]any{"id1": []float32{...}, "id2": []float32{...}}, nil)
 
-// MMR: relevant but diverse results (defaults) or with options
-results, err = db.SearchMMR(queryVector, 5)
-results, err = db.SearchMMR(queryVector, 5, &serverlessVector.MMROptions{Lambda: 0.7})
+// Get by ID / clear all
+vec, err := db.Get("id1")
+db.Clear()
+
+// Search (topK optional, default 10)
+results, err := db.Search(queryVector, 5)
+results, err := db.SearchWithFilter(queryVector, 5, func(v *serverlessVector.Vector) bool { return v.Metadata.Tags["category"] == "news" })
+results, err := db.BatchSearch(queries, 10)  // queries: map[queryID]queryVector
 
 // Info
 size := db.Size()
 stats := db.GetStats()
+
+// MMR: relevant but diverse results (optional; see Performance section)
+results, err = db.SearchMMR(queryVector, 5)
+results, err = db.SearchMMR(queryVector, 5, &serverlessVector.MMROptions{Lambda: 0.7, FetchFactor: 5})
 ```
 
 ## Performance
 
-### SearchMMR (Maximal Marginal Relevance)
+Benchmarks on Apple M1. Scale roughly with n and d. For **L2-normalised** embeddings (e.g. Takara ds1-en-v1), use `DotProduct` for same ranking as cosine with less work.
 
-MMR balances relevance to the query with diversity among results. Same 1000 vectors, 128D, topK=10:
+**Search latency (ms)**
 
-| Variant | Time per call | Relative to Search |
-|---------|---------------|--------------------|
-| Search | ~0.5ms | 1x |
-| SearchMMR (lambda=0.6) | ~1.4ms | ~2.9x |
+| n | 128D | 384D | 768D | 1536D |
+|--:|-----:|-----:|-----:|------:|
+| 100 | 0.05 | 0.15 | 0.3 | 0.6 |
+| 1K | 0.5 | 1.5 | 3 | 6 |
+| 10K | 5 | 15 | 30 | 60 |
 
-Use `SearchMMR(query, topK)` for defaults; add `&MMROptions{Lambda: 0.7}` as third arg to tune.
+**Memory (per vector / 10K vectors)** — 128D: 0.5KB / 27MB · 384D: 1.5KB / 76MB · 768D: 3KB / 149MB · 1536D: 6KB / 295MB
 
-### Search Performance (Linear Scaling)
+**SearchMMR** — Balances relevance and diversity. ~1.4ms (2.9x Search) at 1K vectors 128D, topK=10. `SearchMMR(query, topK)` or add `&MMROptions{Lambda: 0.7, FetchFactor: 5}` to tune.
 
-Approximate times on Apple M1 (1k vectors 128D ~0.5ms). Scale roughly with n and d:
-
-| Vectors | 128D | 384D | 768D | 1536D |
-|---------|------|------|------|-------|
-| 100     | 0.05ms | 0.15ms | 0.3ms | 0.6ms |
-| 1,000   | 0.5ms | 1.5ms | 3ms | 6ms |
-| 10,000  | 5ms | 15ms | 30ms | 60ms |
-
-### Distance Functions
-
-All use the same float32 path. CosineSimilarity (default) is typical; others are similar. For **L2-normalised** embeddings (e.g. Takara ds1-en-v1), use `DotProduct` for the same ranking as cosine with less work.
-
-### Memory Usage
-
-| Dimension | Per Vector | 10K Vectors |
-|-----------|------------|-------------|
-| 128       | 0.5KB      | 27MB        |
-| 384       | 1.5KB      | 76MB        |
-| 768       | 3.0KB      | 149MB       |
-| 1536      | 6.0KB      | 295MB       |
-
-## Common Embedding Dimensions
-
-All throughput numbers below are for **cosine similarity** (default) with 1k vectors, topK=10.
-
-| Model | Dimensions | Approx throughput (1k vectors) |
-|-------|------------|-------------------------------|
-| OpenAI ada-002 | 1536 | ~170 searches/s |
-| OpenAI text-embedding-3-small | 1536 | ~170 searches/s |
-| Sentence Transformers | 384-768 | ~330-670 searches/s |
-| Takara ds1-en-v1 | 512 | ~3600 (use `DotProduct`; embeddings are L2-normalised) |
-| 128D embeddings | 128 | ~2000 searches/s |
+**Throughput (1K vectors, topK=10, cosine)** — Takara ds1-en-v1 512D (use DotProduct): ~3600/s · OpenAI 1536D: ~170/s · Sentence Transformers 384–768D: ~330–670/s · 128D: ~2000/s
 
 ## Use Cases
 
@@ -138,10 +119,11 @@ All throughput numbers below are for **cosine similarity** (default) with 1k vec
 
 - Zero external dependencies
 - Thread-safe operations
-- float32 only (matches OpenAI, Cohere, sentence-transformers, etc.)
-- Automatic metadata inclusion
-- Batch operations
-- Multiple distance functions
+- float32 only (matches Takara ds1, OpenAI, Cohere, sentence-transformers, etc.)
+- Automatic metadata inclusion (CreatedAt, UpdatedAt, Tags)
+- Batch add and batch search
+- Filtered search (SearchWithFilter by metadata/tags)
+- Multiple distance functions (CosineSimilarity, DotProduct, EuclideanDistance, ManhattanDistance)
 
 ## License
 
