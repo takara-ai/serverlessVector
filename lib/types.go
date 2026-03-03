@@ -157,6 +157,12 @@ type SearchResult struct {
 	Total   int
 }
 
+// MMROptions configures Maximal Marginal Relevance search. Nil or zero values use defaults.
+type MMROptions struct {
+	Lambda      float64 // Balance relevance (1) vs diversity (0). Default 0.6.
+	FetchFactor int     // Candidate pool size = FetchFactor * topK. Default 5.
+}
+
 
 
 // String returns a string representation of the distance function

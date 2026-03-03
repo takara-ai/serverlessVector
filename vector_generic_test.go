@@ -226,6 +226,68 @@ func TestDistanceFunctions(t *testing.T) {
 	}
 }
 
+func TestSearchMMR(t *testing.T) {
+	db := NewVectorDB(3)
+
+	// Add vectors: vec1 very close to query, vec2/vec3 similar to each other but one close to query
+	_ = db.Add("vec1", []float64{1.0, 0.0, 0.0})
+	_ = db.Add("vec2", []float64{0.99, 0.01, 0.0})
+	_ = db.Add("vec3", []float64{0.98, 0.02, 0.0})
+	_ = db.Add("vec4", []float64{0.0, 1.0, 0.0})
+	_ = db.Add("vec5", []float64{0.0, 0.0, 1.0})
+
+	query := []float64{1.0, 0.0, 0.0}
+
+	// Lambda=1: pure relevance, should match Search order
+	mmr1, err := db.SearchMMRParams(query, 3, 1.0)
+	if err != nil {
+		t.Fatalf("SearchMMRParams failed: %v", err)
+	}
+	if mmr1.Total != 3 {
+		t.Errorf("Expected 3 results, got %d", mmr1.Total)
+	}
+	searchRes, _ := db.Search(query, 3)
+	if searchRes.Results[0].ID != mmr1.Results[0].ID {
+		t.Errorf("MMR lambda=1 first result should match Search: got %s", mmr1.Results[0].ID)
+	}
+
+	// Lambda=0.5: some diversity; just ensure we get 3 results and no error
+	mmr5, err := db.SearchMMRParams(query, 3, 0.5)
+	if err != nil {
+		t.Fatalf("SearchMMRParams(0.5) failed: %v", err)
+	}
+	if mmr5.Total != 3 {
+		t.Errorf("Expected 3 results for lambda=0.5, got %d", mmr5.Total)
+	}
+
+	// topK larger than candidates: should return all
+	mmrAll, err := db.SearchMMRParams(query, 10, 0.7)
+	if err != nil {
+		t.Fatalf("SearchMMRParams(10) failed: %v", err)
+	}
+	if mmrAll.Total != 5 {
+		t.Errorf("Expected 5 results when topK=10, got %d", mmrAll.Total)
+	}
+
+	// SearchMMR (defaults) returns same count
+	mmrDefault, err := db.SearchMMR(query, 3)
+	if err != nil {
+		t.Fatalf("SearchMMR failed: %v", err)
+	}
+	if mmrDefault.Total != 3 {
+		t.Errorf("Expected 3 results from SearchMMR, got %d", mmrDefault.Total)
+	}
+
+	// SearchMMR with options
+	optsCustom, err := db.SearchMMR(query, 3, &MMROptions{Lambda: 0.8})
+	if err != nil {
+		t.Fatalf("SearchMMR(opts) failed: %v", err)
+	}
+	if optsCustom.Total != 3 {
+		t.Errorf("Expected 3 results from SearchMMR(custom), got %d", optsCustom.Total)
+	}
+}
+
 func TestMemoryStats(t *testing.T) {
 	db := NewVectorDB(0) // No dimension validation
 
@@ -296,6 +358,44 @@ func BenchmarkSearch_Float64(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = db.Search(query, 10)
+	}
+}
+
+func BenchmarkSearchMMR_Float32(b *testing.B) {
+	db := NewVectorDB(128)
+	for i := 0; i < 1000; i++ {
+		data := make([]float32, 128)
+		for j := range data {
+			data[j] = float32((i+j)%10) * 0.1
+		}
+		db.Add(fmt.Sprintf("vec%d", i), data)
+	}
+	query := make([]float32, 128)
+	for i := range query {
+		query[i] = float32(i%10) * 0.1
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = db.SearchMMR(query, 10)
+	}
+}
+
+func BenchmarkSearchMMR_Float64(b *testing.B) {
+	db := NewVectorDB(128)
+	for i := 0; i < 1000; i++ {
+		data := make([]float64, 128)
+		for j := range data {
+			data[j] = float64((i+j)%10) * 0.1
+		}
+		db.Add(fmt.Sprintf("vec%d", i), data)
+	}
+	query := make([]float64, 128)
+	for i := range query {
+		query[i] = float64(i%10) * 0.1
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = db.SearchMMR(query, 10)
 	}
 }
 

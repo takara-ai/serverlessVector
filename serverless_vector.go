@@ -26,6 +26,9 @@ type SearchResult = lib.SearchResult
 // SimilarityResult holds individual search result
 type SimilarityResult = lib.SimilarityResult
 
+// MMROptions configures MMR search; nil uses defaults
+type MMROptions = lib.MMROptions
+
 // Constants for vector types
 const (
 	Float32 VectorType = lib.Float32

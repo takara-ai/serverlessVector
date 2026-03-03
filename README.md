@@ -33,8 +33,10 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-
     fmt.Printf("Found %d similar vectors\n", len(results.Results))
+
+    // Or MMR: relevant but diverse results
+    results, err = db.SearchMMR(query, 5)
 }
 ```
 
@@ -60,12 +62,29 @@ err := db.Delete("id1")
 results, err := db.Search(queryVector, 5)
 results, err := db.BatchSearch(queries, 10)
 
+// MMR: relevant but diverse results (defaults) or with options
+results, err = db.SearchMMR(queryVector, 5)
+results, err = db.SearchMMR(queryVector, 5, &serverlessVector.MMROptions{Lambda: 0.7})
+
 // Info
 size := db.Size()
 stats := db.GetStats()
 ```
 
 ## Performance
+
+### SearchMMR (Maximal Marginal Relevance)
+
+MMR balances relevance to the query with diversity among results. Same 1000 vectors, 128D, topK=10:
+
+| Variant | Time per call | Relative to Search |
+|---------|---------------|--------------------|
+| Search (Float32) | ~26ms | 1x |
+| SearchMMR (Float32, lambda=0.6) | ~72ms | ~2.8x |
+| Search (Float64) | ~27ms | 1x |
+| SearchMMR (Float64, lambda=0.6) | ~86ms | ~3.2x |
+
+Use `SearchMMR(query, topK)` for defaults; add `&MMROptions{Lambda: 0.7}` as third arg to tune.
 
 ### Search Performance (Linear Scaling)
 

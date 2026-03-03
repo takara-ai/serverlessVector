@@ -21,6 +21,16 @@ BenchmarkBatchAdd-8         	     894	   1325132 ns/op	 2629129 B/op	   59108 al
 PASS
 ok  	github.com/takara-ai/serverlessVector	12.388s
 
+Search vs SearchMMR (1000 vectors, 128D, topK=10, MMR lambda=0.6):
+goos: darwin
+goarch: arm64
+pkg: github.com/takara-ai/serverlessVector
+cpu: Apple M1
+BenchmarkSearch_Float32-8        	      45	  26187571 ns/op	 2930469 B/op	  717622 allocs/op
+BenchmarkSearch_Float64-8        	      46	  27516765 ns/op	 5800817 B/op	  717622 allocs/op
+BenchmarkSearchMMR_Float32-8     	      19	  77850007 ns/op	 8667105 B/op	 2148161 allocs/op
+BenchmarkSearchMMR_Float64-8     	      15	  83031139 ns/op	17259656 B/op	 2148161 allocs/op
+
 Previous (reference from earlier run):
 BenchmarkDotProduct/Size128-8         	19502905	        55.52 ns/op	       0 B/op	       0 allocs/op
 BenchmarkDotProduct/Size512-8         	 5682855	       211.1 ns/op	       0 B/op	       0 allocs/op
