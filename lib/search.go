@@ -1,11 +1,35 @@
 package lib
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"math"
 	"sort"
 )
+
+// resultHeap keeps the top K results by score. For similarity (higher better), root is min score;
+// for distance (lower better), root is max score.
+type resultHeap struct {
+	results       []SimilarityResult
+	lowerIsBetter bool
+}
+
+func (h resultHeap) Len() int { return len(h.results) }
+func (h resultHeap) Swap(i, j int) { h.results[i], h.results[j] = h.results[j], h.results[i] }
+func (h resultHeap) Less(i, j int) bool {
+	if h.lowerIsBetter {
+		return h.results[i].Score > h.results[j].Score // max at root for distance
+	}
+	return h.results[i].Score < h.results[j].Score // min at root for similarity
+}
+func (h *resultHeap) Push(x interface{}) { h.results = append(h.results, x.(SimilarityResult)) }
+func (h *resultHeap) Pop() interface{} {
+	n := len(h.results)
+	item := h.results[n-1]
+	h.results = h.results[:n-1]
+	return item
+}
 
 // Search performs fast similarity search
 // Returns top 10 results by default, or specify topK
@@ -15,6 +39,15 @@ func (db *VectorDB) Search(query interface{}, topK ...int) (*SearchResult, error
 		k = topK[0]
 	}
 	return db.searchCore(query, k, true, nil)
+}
+
+// SearchWithFilter performs similarity search with a filter on vectors (e.g. by metadata/tags).
+// filter is called for each vector; only vectors for which filter returns true are considered.
+func (db *VectorDB) SearchWithFilter(query interface{}, topK int, filter func(*Vector) bool) (*SearchResult, error) {
+	if topK <= 0 {
+		topK = 10
+	}
+	return db.searchCore(query, topK, true, filter)
 }
 
 // BatchSearch performs search on multiple queries efficiently
@@ -128,7 +161,7 @@ func (db *VectorDB) searchMMRCore(query interface{}, topK int, lambda float64, f
 			vecD := candVecs[id]
 			for _, s := range selected {
 				vecS := candVecs[s.ID]
-				raw := db.calculateSimilarity(vecD.Data, vecS.Data, vecD.Type, db.distFunc)
+				raw := db.distanceFloat32(vecD.Data, vecS.Data, db.distFunc)
 				sim := toRelevance(raw)
 				if sim > maxSimToSelected {
 					maxSimToSelected = sim
@@ -155,12 +188,11 @@ func (db *VectorDB) searchMMRCore(query interface{}, topK int, lambda float64, f
 
 // searchCore is the shared backend implementation.
 func (db *VectorDB) searchCore(query interface{}, topK int, includeMetadata bool, filterFunc func(*Vector) bool) (*SearchResult, error) {
-	querySlice, queryType, err := convertToInterfaceSlice(query)
+	query32, err := queryToFloat32(query)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(querySlice) == 0 {
+	if len(query32) == 0 {
 		return nil, errors.New("query vector cannot be empty")
 	}
 	if topK <= 0 {
@@ -174,66 +206,52 @@ func (db *VectorDB) searchCore(query interface{}, topK int, includeMetadata bool
 		return &SearchResult{Results: []SimilarityResult{}}, nil
 	}
 
-	results := make([]SimilarityResult, 0, len(db.vectors))
+	lowerIsBetter := db.distFunc == EuclideanDistance || db.distFunc == ManhattanDistance
+	h := &resultHeap{
+		results:       make([]SimilarityResult, 0, topK+1),
+		lowerIsBetter: lowerIsBetter,
+	}
 
 	for _, vector := range db.vectors {
 		if filterFunc != nil && !filterFunc(vector) {
 			continue
 		}
-
-		if len(vector.Data) != len(querySlice) {
-			return nil, fmt.Errorf("query vector dimension %d does not match stored vector dimension %d", len(querySlice), len(vector.Data))
+		if vector.Dimension != len(query32) {
+			return nil, fmt.Errorf("query vector dimension %d does not match stored vector dimension %d", len(query32), vector.Dimension)
 		}
 
-		if vector.Type != queryType {
-			continue
-		}
-
-		score := db.calculateSimilarity(querySlice, vector.Data, queryType, db.distFunc)
+		score := db.distanceFloat32(query32, vector.Data, db.distFunc)
 
 		result := SimilarityResult{
 			ID:    vector.ID,
 			Score: score,
 		}
-
 		if includeMetadata {
 			result.Metadata = vector.Metadata
 		}
 
-		results = append(results, result)
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		switch db.distFunc {
-		case EuclideanDistance, ManhattanDistance:
-			return results[i].Score < results[j].Score // Lower distance is better
-		default:
-			return results[i].Score > results[j].Score // Higher similarity is better
+		if h.Len() < topK {
+			heap.Push(h, result)
+		} else {
+			worst := h.results[0]
+			replace := lowerIsBetter && score < worst.Score || !lowerIsBetter && score > worst.Score
+			if replace {
+				heap.Pop(h)
+				heap.Push(h, result)
+			}
 		}
-	})
-
-	if len(results) > topK {
-		results = results[:topK]
 	}
+
+	results := h.results
+	sort.Slice(results, func(i, j int) bool {
+		if lowerIsBetter {
+			return results[i].Score < results[j].Score
+		}
+		return results[i].Score > results[j].Score
+	})
 
 	return &SearchResult{
 		Results: results,
 		Total:   len(results),
 	}, nil
-}
-
-// calculateSimilarity calculates similarity/distance between two vectors
-func (db *VectorDB) calculateSimilarity(a, b []interface{}, vecType VectorType, distanceFunc DistanceFunction) float64 {
-	switch distanceFunc {
-	case CosineSimilarity:
-		return db.cosineSimilarity(a, b, vecType)
-	case DotProduct:
-		return db.dotProduct(a, b, vecType)
-	case EuclideanDistance:
-		return db.euclideanDistance(a, b, vecType)
-	case ManhattanDistance:
-		return db.manhattanDistance(a, b, vecType)
-	default:
-		return db.dotProduct(a, b, vecType) // Default fallback
-	}
 }

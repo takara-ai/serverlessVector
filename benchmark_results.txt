@@ -1,39 +1,31 @@
-Locking improvements (from feedback):
-- BatchAdd: vector building done outside the lock; write lock held only for map merge (copy + assign).
-  Reduces write lock duration so concurrent readers see lower tail latency during batch loads.
-- GetStats: snapshot (dim/type per vector) taken under RLock; stats computation runs outside the lock.
-- Search: still holds RLock for full search (snapshot would copy all vector data per search and regress throughput).
+Benchmarks after P0 (heap topK + dense storage + SearchWithFilter).
+Exact NN only; no ANN.
 
-Benchmarks (after improvements):
 goos: darwin
 goarch: arm64
 pkg: github.com/takara-ai/serverlessVector
 cpu: Apple M1
-BenchmarkSearch_Float32-8   	      93	  11638501 ns/op	 2930412 B/op	  717622 allocs/op
-BenchmarkSearch_Float32-8   	     100	  12667582 ns/op	 2930341 B/op	  717622 allocs/op
-BenchmarkSearch_Float32-8   	      99	  11597656 ns/op	 2930350 B/op	  717622 allocs/op
-BenchmarkSearch_Float64-8   	      94	  12454954 ns/op	 5800821 B/op	  717622 allocs/op
-BenchmarkSearch_Float64-8   	      90	  12598296 ns/op	 5800816 B/op	  717622 allocs/op
-BenchmarkSearch_Float64-8   	      94	  12505446 ns/op	 5800819 B/op	  717622 allocs/op
-BenchmarkBatchAdd-8         	     894	   1504117 ns/op	 2629128 B/op	   59108 allocs/op
-BenchmarkBatchAdd-8         	     886	   1327450 ns/op	 2629128 B/op	   59108 allocs/op
-BenchmarkBatchAdd-8         	     894	   1325132 ns/op	 2629129 B/op	   59108 allocs/op
+
+BenchmarkSearch_Float32-8      	    1924	    736256 ns/op	    5010 B/op	      56 allocs/op
+BenchmarkSearch_Float32-8      	    1777	    842895 ns/op	    4999 B/op	      56 allocs/op
+BenchmarkSearch_Float32-8      	    2209	    694871 ns/op	    5038 B/op	      56 allocs/op
+BenchmarkSearch_Float64-8      	    2108	    641056 ns/op	    3981 B/op	      55 allocs/op
+BenchmarkSearch_Float64-8      	    2190	    475813 ns/op	    4049 B/op	      56 allocs/op
+BenchmarkSearch_Float64-8      	    2637	    625856 ns/op	    4010 B/op	      55 allocs/op
+BenchmarkSearchMMR_Float32-8   	     670	   1721139 ns/op	   34418 B/op	     268 allocs/op
+BenchmarkSearchMMR_Float32-8   	     693	   1729292 ns/op	   34407 B/op	     268 allocs/op
+BenchmarkSearchMMR_Float32-8   	     692	   1729958 ns/op	   34407 B/op	     268 allocs/op
+BenchmarkSearchMMR_Float64-8   	     847	   1410725 ns/op	   33402 B/op	     268 allocs/op
+BenchmarkSearchMMR_Float64-8   	     856	   1412839 ns/op	   33478 B/op	     269 allocs/op
+BenchmarkSearchMMR_Float64-8   	     848	   1408532 ns/op	   33563 B/op	     270 allocs/op
+BenchmarkBatchAdd-8            	    9738	    211827 ns/op	  362706 B/op	    1508 allocs/op
+BenchmarkBatchAdd-8            	    5414	    207690 ns/op	  362705 B/op	    1508 allocs/op
+BenchmarkBatchAdd-8            	    6128	    220328 ns/op	  362705 B/op	    1508 allocs/op
 PASS
-ok  	github.com/takara-ai/serverlessVector	12.388s
 
-Search vs SearchMMR (1000 vectors, 128D, topK=10, MMR lambda=0.6):
-goos: darwin
-goarch: arm64
-pkg: github.com/takara-ai/serverlessVector
-cpu: Apple M1
-BenchmarkSearch_Float32-8        	      45	  26187571 ns/op	 2930469 B/op	  717622 allocs/op
-BenchmarkSearch_Float64-8        	      46	  27516765 ns/op	 5800817 B/op	  717622 allocs/op
-BenchmarkSearchMMR_Float32-8     	      19	  77850007 ns/op	 8667105 B/op	 2148161 allocs/op
-BenchmarkSearchMMR_Float64-8     	      15	  83031139 ns/op	17259656 B/op	 2148161 allocs/op
+Previous (before P0):
+- Search: ~12-18ms, 2.8-5.8 MB/op, 717k allocs/op
+- SearchMMR: ~78-100ms, 8.6-17 MB/op, 2.1M allocs/op
+- BatchAdd: ~1.3-3.3ms, 2.6 MB/op, 59k allocs/op
 
-Previous (reference from earlier run):
-BenchmarkDotProduct/Size128-8         	19502905	        55.52 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size512-8         	 5682855	       211.1 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDotProduct/Size1536-8        	 1884777	       635.7 ns/op	       0 B/op	       0 allocs/op
-BenchmarkSearch-8                     	    7126	    153843 ns/op	   24720 B/op	       5 allocs/op
-BenchmarkCosineSearch-8               	    2870	    406250 ns/op	   24720 B/op	       5 allocs/op
+Improvement: Search ~17-25x faster, ~12k fewer allocs; MMR ~50x faster, ~8k fewer allocs; BatchAdd ~6-15x faster.

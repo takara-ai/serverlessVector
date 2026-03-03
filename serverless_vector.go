@@ -29,11 +29,8 @@ type SimilarityResult = lib.SimilarityResult
 // MMROptions configures MMR search; nil uses defaults
 type MMROptions = lib.MMROptions
 
-// Constants for vector types
-const (
-	Float32 VectorType = lib.Float32
-	Float64 VectorType = lib.Float64
-)
+// Vector type constant (float32 only, matches embedding APIs)
+const Float32 VectorType = lib.Float32
 
 // Constants for distance functions
 const (

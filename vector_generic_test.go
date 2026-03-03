@@ -26,91 +26,51 @@ func TestVectorDB_Float32(t *testing.T) {
 		t.Errorf("Expected ID 'vec1', got '%s'", vector.ID)
 	}
 
-	if len(vector.Data) != 4 {
-		t.Errorf("Expected dimension 4, got %d", len(vector.Data))
+	if vector.Dimension != 4 {
+		t.Errorf("Expected dimension 4, got %d", vector.Dimension)
 	}
 
 	// Check data values
 	for i, expected := range data {
-		if actual := vector.Data[i].(float32); actual != expected {
+		if actual := vector.Data[i]; actual != expected {
 			t.Errorf("Expected data[%d] = %f, got %f", i, expected, actual)
 		}
 	}
 }
 
-func TestVectorDB_Float64(t *testing.T) {
-	// Test with custom distance function (dot product instead of cosine)
-	db := NewVectorDB(3, DotProduct)
-
-	// Test Add
-	data := []float64{1.0, 2.0, 3.0}
-	err := db.Add("vec1", data)
-	if err != nil {
-		t.Fatalf("Failed to add vector: %v", err)
-	}
-
-	// Test Search
-	query := []float64{1.0, 1.0, 1.0}
-	result, err := db.Search(query, 1)
-	if err != nil {
-		t.Fatalf("Failed to search: %v", err)
-	}
-
-	if len(result.Results) != 1 {
-		t.Errorf("Expected 1 result, got %d", len(result.Results))
-	}
-
-	if result.Results[0].ID != "vec1" {
-		t.Errorf("Expected result ID 'vec1', got '%s'", result.Results[0].ID)
+func TestVectorDB_RejectsFloat64(t *testing.T) {
+	db := NewVectorDB(3)
+	err := db.Add("vec1", []float64{1.0, 2.0, 3.0})
+	if err == nil {
+		t.Error("Expected Add to reject []float64")
 	}
 }
 
-func TestUnifiedAPI_AutoTypeHandling(t *testing.T) {
-	db := NewVectorDB(0) // d=0 (no dimension validation)
-
-	// Add float32 vector
-	float32Data := []float32{0.1, 0.2, 0.3}
-	err := db.Add("vec32", float32Data)
+func TestVectorDB_DotProduct(t *testing.T) {
+	db := NewVectorDB(3, DotProduct)
+	_ = db.Add("vec1", []float32{1.0, 2.0, 3.0})
+	result, err := db.Search([]float32{1.0, 1.0, 1.0}, 1)
 	if err != nil {
-		t.Fatalf("Failed to add float32 vector: %v", err)
+		t.Fatalf("Search failed: %v", err)
 	}
-
-	// Add float64 vector
-	float64Data := []float64{0.4, 0.5, 0.6}
-	err = db.Add("vec64", float64Data)
-	if err != nil {
-		t.Fatalf("Failed to add float64 vector: %v", err)
+	if len(result.Results) != 1 || result.Results[0].ID != "vec1" {
+		t.Errorf("Expected vec1, got %v", result.Results)
 	}
+}
 
-	// Check total size
+func TestUnifiedAPI_Float32Only(t *testing.T) {
+	db := NewVectorDB(0)
+	_ = db.Add("a", []float32{0.1, 0.2, 0.3})
+	_ = db.Add("b", []float32{0.4, 0.5, 0.6})
 	if db.Size() != 2 {
 		t.Errorf("Expected size 2, got %d", db.Size())
 	}
-
-	// Get float32 vector
-	vec32, err := db.Get("vec32")
-	if err != nil {
-		t.Fatalf("Failed to get float32 vector: %v", err)
+	vec, err := db.Get("a")
+	if err != nil || vec.Dimension != 3 {
+		t.Fatalf("Get: %v", err)
 	}
-
-	if vec32.Type != Float32 {
-		t.Errorf("Expected Float32 type, got %v", vec32.Type)
-	}
-	if len(vec32.Data) != 3 {
-		t.Errorf("Expected 3 elements, got %d", len(vec32.Data))
-	}
-
-	// Get float64 vector
-	vec64, err := db.Get("vec64")
-	if err != nil {
-		t.Fatalf("Failed to get float64 vector: %v", err)
-	}
-
-	if vec64.Type != Float64 {
-		t.Errorf("Expected Float64 type, got %v", vec64.Type)
-	}
-	if len(vec64.Data) != 3 {
-		t.Errorf("Expected 3 elements, got %d", len(vec64.Data))
+	if vec.Data[0] != 0.1 || vec.Data[1] != 0.2 || vec.Data[2] != 0.3 {
+		t.Errorf("Expected [0.1,0.2,0.3], got %v", vec.Data)
 	}
 }
 
@@ -142,11 +102,11 @@ func TestValidation(t *testing.T) {
 func TestBatchOperations(t *testing.T) {
 	db := NewVectorDB(0) // No dimension validation for mixed dimensions
 
-	// Prepare batch data
+	// Prepare batch data (float32 only)
 	vectors := map[string]interface{}{
 		"vec1": []float32{0.1, 0.2, 0.3},
 		"vec2": []float32{0.4, 0.5, 0.6},
-		"vec3": []float64{0.7, 0.8, 0.9},
+		"vec3": []float32{0.7, 0.8, 0.9},
 	}
 
 	metadata := map[string]VectorMetadata{
@@ -175,46 +135,58 @@ func TestBatchOperations(t *testing.T) {
 	}
 }
 
-func TestDistanceFunctions(t *testing.T) {
-	db := NewVectorDB(3) // 3-dimensional vectors, cosine similarity (default)
-
-	// Add test vectors
-	vectors := map[string]interface{}{
-		"vec1": []float64{1.0, 0.0, 0.0}, // Unit vector along x-axis
-		"vec2": []float64{0.0, 1.0, 0.0}, // Unit vector along y-axis
-		"vec3": []float64{0.0, 0.0, 1.0}, // Unit vector along z-axis
-	}
-
-	for id, data := range vectors {
-		err := db.Add(id, data)
-		if err != nil {
-			t.Fatalf("Failed to add vector %s: %v", id, err)
+func TestSearchWithFilter(t *testing.T) {
+	db := NewVectorDB(3)
+	_ = db.Add("a", []float32{1, 0, 0}, VectorMetadata{Tags: map[string]string{"cat": "x"}})
+	_ = db.Add("b", []float32{0, 1, 0}, VectorMetadata{Tags: map[string]string{"cat": "y"}})
+	_ = db.Add("c", []float32{0, 0, 1}, VectorMetadata{Tags: map[string]string{"cat": "x"}})
+	query := []float32{1, 0, 0}
+	// Filter: only cat=x
+	filter := func(v *Vector) bool {
+		if v.Metadata.Tags == nil {
+			return false
 		}
+		return v.Metadata.Tags["cat"] == "x"
 	}
+	res, err := db.SearchWithFilter(query, 10, filter)
+	if err != nil {
+		t.Fatalf("SearchWithFilter failed: %v", err)
+	}
+	if res.Total != 2 {
+		t.Errorf("Expected 2 results (cat=x), got %d", res.Total)
+	}
+	ids := make(map[string]bool)
+	for _, r := range res.Results {
+		ids[r.ID] = true
+	}
+	if !ids["a"] || !ids["c"] || ids["b"] {
+		t.Errorf("Expected IDs a and c only, got %v", res.Results)
+	}
+}
 
-	// Test cosine similarity
-	query := []float64{1.0, 0.0, 0.0}
+func TestDistanceFunctions(t *testing.T) {
+	db := NewVectorDB(3)
+	vectors := map[string]interface{}{
+		"vec1": []float32{1.0, 0.0, 0.0},
+		"vec2": []float32{0.0, 1.0, 0.0},
+		"vec3": []float32{0.0, 0.0, 1.0},
+	}
+	for id, data := range vectors {
+		_ = db.Add(id, data)
+	}
+	query := []float32{1.0, 0.0, 0.0}
 	result, err := db.Search(query, 1)
 	if err != nil {
 		t.Fatalf("Failed cosine search: %v", err)
 	}
-
 	if result.Results[0].ID != "vec1" || math.Abs(result.Results[0].Score-1.0) > 1e-6 {
 		t.Errorf("Expected vec1 with score 1.0, got %s with score %f",
 			result.Results[0].ID, result.Results[0].Score)
 	}
-
-	// Test dot product with different distance function
 	dpDb := NewVectorDB(3, DotProduct)
-
-	// Re-add vectors with dot product config
 	for id, data := range vectors {
-		err := dpDb.Add(id, data)
-		if err != nil {
-			t.Fatalf("Failed to add vector %s: %v", id, err)
-		}
+		_ = dpDb.Add(id, data)
 	}
-
 	result, err = dpDb.Search(query, 1)
 	if err != nil {
 		t.Fatalf("Failed dot product search: %v", err)
@@ -228,15 +200,12 @@ func TestDistanceFunctions(t *testing.T) {
 
 func TestSearchMMR(t *testing.T) {
 	db := NewVectorDB(3)
-
-	// Add vectors: vec1 very close to query, vec2/vec3 similar to each other but one close to query
-	_ = db.Add("vec1", []float64{1.0, 0.0, 0.0})
-	_ = db.Add("vec2", []float64{0.99, 0.01, 0.0})
-	_ = db.Add("vec3", []float64{0.98, 0.02, 0.0})
-	_ = db.Add("vec4", []float64{0.0, 1.0, 0.0})
-	_ = db.Add("vec5", []float64{0.0, 0.0, 1.0})
-
-	query := []float64{1.0, 0.0, 0.0}
+	_ = db.Add("vec1", []float32{1.0, 0.0, 0.0})
+	_ = db.Add("vec2", []float32{0.99, 0.01, 0.0})
+	_ = db.Add("vec3", []float32{0.98, 0.02, 0.0})
+	_ = db.Add("vec4", []float32{0.0, 1.0, 0.0})
+	_ = db.Add("vec5", []float32{0.0, 0.0, 1.0})
+	query := []float32{1.0, 0.0, 0.0}
 
 	// Lambda=1: pure relevance, should match Search order
 	mmr1, err := db.SearchMMRParams(query, 3, 1.0)
@@ -294,7 +263,7 @@ func TestMemoryStats(t *testing.T) {
 	// Add some vectors
 	vectors := map[string]interface{}{
 		"vec1": []float32{0.1, 0.2, 0.3, 0.4},
-		"vec2": []float64{0.5, 0.6, 0.7, 0.8},
+		"vec2": []float32{0.5, 0.6, 0.7, 0.8},
 	}
 
 	err := db.BatchAdd(vectors, nil)
@@ -337,24 +306,43 @@ func BenchmarkSearch_Float32(b *testing.B) {
 	}
 }
 
-func BenchmarkSearch_Float64(b *testing.B) {
-	// Create database with float64 support (dimension 128)
-	db := NewVectorDB(128)
-
-	// Add test vectors
+// BenchmarkSearch_512D benchmarks search with 1k vectors of 512 dims (e.g. Takara ds1-en-v1).
+func BenchmarkSearch_512D(b *testing.B) {
+	const dim = 512
+	db := NewVectorDB(dim)
 	for i := 0; i < 1000; i++ {
-		data := make([]float64, 128)
+		data := make([]float32, dim)
 		for j := range data {
-			data[j] = float64((i+j)%10) * 0.1
+			data[j] = float32((i+j)%10) * 0.1
 		}
 		db.Add(fmt.Sprintf("vec%d", i), data)
 	}
-
-	query := make([]float64, 128)
+	query := make([]float32, dim)
 	for i := range query {
-		query[i] = float64(i%10) * 0.1
+		query[i] = float32(i%10) * 0.1
 	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = db.Search(query, 10)
+	}
+}
 
+// BenchmarkSearch_512D_DotProduct is for L2-normalized embeddings (e.g. Takara ds1-en-v1):
+// dot product gives same ranking as cosine, no norm computation.
+func BenchmarkSearch_512D_DotProduct(b *testing.B) {
+	const dim = 512
+	db := NewVectorDB(dim, DotProduct)
+	for i := 0; i < 1000; i++ {
+		data := make([]float32, dim)
+		for j := range data {
+			data[j] = float32((i+j)%10) * 0.1
+		}
+		db.Add(fmt.Sprintf("vec%d", i), data)
+	}
+	query := make([]float32, dim)
+	for i := range query {
+		query[i] = float32(i%10) * 0.1
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = db.Search(query, 10)
@@ -373,25 +361,6 @@ func BenchmarkSearchMMR_Float32(b *testing.B) {
 	query := make([]float32, 128)
 	for i := range query {
 		query[i] = float32(i%10) * 0.1
-	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = db.SearchMMR(query, 10)
-	}
-}
-
-func BenchmarkSearchMMR_Float64(b *testing.B) {
-	db := NewVectorDB(128)
-	for i := 0; i < 1000; i++ {
-		data := make([]float64, 128)
-		for j := range data {
-			data[j] = float64((i+j)%10) * 0.1
-		}
-		db.Add(fmt.Sprintf("vec%d", i), data)
-	}
-	query := make([]float64, 128)
-	for i := range query {
-		query[i] = float64(i%10) * 0.1
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

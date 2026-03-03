@@ -36,52 +36,32 @@ func NewVectorDB(dimension int, distanceFunc ...DistanceFunction) *VectorDB {
 	}
 }
 
-// Add adds a vector to the database
-// id: unique identifier for the vector
-// data: vector data as []float32 or []float64
-// metadata: optional metadata
+// Add adds a vector to the database. data must be []float32 (matches embedding APIs).
 func (db *VectorDB) Add(id string, data interface{}, metadata ...VectorMetadata) error {
 	if id == "" {
 		return errors.New("vector ID cannot be empty")
 	}
-
-	dataSlice, vecType, err := convertToInterfaceSlice(data)
+	vec, dim, err := copyFloat32Slice(data)
 	if err != nil {
 		return err
 	}
-
-	if len(dataSlice) == 0 {
+	if dim == 0 {
 		return errors.New("vector data cannot be empty")
 	}
-
-	if db.dimension > 0 && len(dataSlice) != db.dimension {
-		return fmt.Errorf("vector dimension %d does not match expected %d", len(dataSlice), db.dimension)
+	if db.dimension > 0 && dim != db.dimension {
+		return fmt.Errorf("vector dimension %d does not match expected %d", dim, db.dimension)
 	}
-
 	db.mu.Lock()
 	defer db.mu.Unlock()
-
-	vector := &Vector{
-		ID:   id,
-		Data: make([]interface{}, len(dataSlice)),
-		Type: vecType,
-	}
-
-	copy(vector.Data, dataSlice)
-
-	// Add metadata if provided
 	now := time.Now().Unix()
+	vector := &Vector{ID: id, Data: vec, Dimension: dim}
 	if len(metadata) > 0 {
 		vector.Metadata = metadata[0]
 		vector.Metadata.CreatedAt = now
 		vector.Metadata.UpdatedAt = now
 	} else {
-		vector.Metadata = VectorMetadata{
-			CreatedAt: now,
-			UpdatedAt: now,
-		}
+		vector.Metadata = VectorMetadata{CreatedAt: now, UpdatedAt: now}
 	}
-
 	db.vectors[id] = vector
 	return nil
 }
@@ -96,46 +76,36 @@ func (db *VectorDB) Get(id string) (*Vector, error) {
 		return nil, fmt.Errorf("vector with ID %s not found", id)
 	}
 
-	// Return a copy to prevent external modification
-	result := &Vector{
-		ID:       vector.ID,
-		Data:     make([]interface{}, len(vector.Data)),
-		Type:     vector.Type,
-		Metadata: vector.Metadata,
-	}
-	copy(result.Data, vector.Data)
-	return result, nil
+	dataCopy := make([]float32, vector.Dimension)
+	copy(dataCopy, vector.Data)
+	return &Vector{
+		ID:        vector.ID,
+		Data:      dataCopy,
+		Metadata:  vector.Metadata,
+		Dimension: vector.Dimension,
+	}, nil
 }
 
-// Update updates an existing vector
+// Update updates an existing vector. data must be []float32.
 func (db *VectorDB) Update(id string, data interface{}, metadata ...VectorMetadata) error {
 	if id == "" {
 		return errors.New("vector ID cannot be empty")
 	}
-
-	dataSlice, vecType, err := convertToInterfaceSlice(data)
+	vec, dim, err := copyFloat32Slice(data)
 	if err != nil {
 		return err
 	}
-
-	if db.dimension > 0 && len(dataSlice) != db.dimension {
-		return fmt.Errorf("vector dimension %d does not match expected %d", len(dataSlice), db.dimension)
+	if db.dimension > 0 && dim != db.dimension {
+		return fmt.Errorf("vector dimension %d does not match expected %d", dim, db.dimension)
 	}
-
 	db.mu.Lock()
 	defer db.mu.Unlock()
-
 	vector, exists := db.vectors[id]
 	if !exists {
 		return fmt.Errorf("vector with ID %s not found", id)
 	}
-
-	// Update data
-	vector.Data = make([]interface{}, len(dataSlice))
-	copy(vector.Data, dataSlice)
-	vector.Type = vecType
-
-	// Update metadata
+	vector.Data = vec
+	vector.Dimension = dim
 	now := time.Now().Unix()
 	if len(metadata) > 0 {
 		vector.Metadata = metadata[0]
@@ -143,7 +113,6 @@ func (db *VectorDB) Update(id string, data interface{}, metadata ...VectorMetada
 	} else {
 		vector.Metadata.UpdatedAt = now
 	}
-
 	return nil
 }
 
@@ -190,26 +159,19 @@ func (db *VectorDB) BatchAdd(vectors map[string]interface{}, metadata map[string
 		if id == "" {
 			return errors.New("vector ID cannot be empty")
 		}
-
-		dataSlice, vecType, err := convertToInterfaceSlice(data)
+		vec, dim, err := copyFloat32Slice(data)
 		if err != nil {
-			return fmt.Errorf("unsupported vector type for %s: %T", id, data)
+			return fmt.Errorf("unsupported vector type for %s: %T (use []float32)", id, data)
 		}
-
-		if db.dimension > 0 && len(dataSlice) != db.dimension {
-			return fmt.Errorf("vector %s dimension %d does not match expected %d", id, len(dataSlice), db.dimension)
+		if db.dimension > 0 && dim != db.dimension {
+			return fmt.Errorf("vector %s dimension %d does not match expected %d", id, dim, db.dimension)
 		}
-
 		vector := &Vector{
-			ID:   id,
-			Data: make([]interface{}, len(dataSlice)),
-			Type: vecType,
-			Metadata: VectorMetadata{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+			ID:        id,
+			Data:      vec,
+			Dimension: dim,
+			Metadata:  VectorMetadata{CreatedAt: now, UpdatedAt: now},
 		}
-		copy(vector.Data, dataSlice)
 		if meta, exists := metadata[id]; exists {
 			vector.Metadata = meta
 			vector.Metadata.CreatedAt = now

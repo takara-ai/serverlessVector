@@ -23,9 +23,9 @@ func main() {
     // Create database with 4 dimensions (example)
     db := serverlessVector.NewVectorDB(4)
 
-    // Add vectors
+    // Add vectors (float32 only, matches embedding APIs)
     db.Add("cat", []float32{0.1, 0.3, 0.2, 0.4})
-    db.Add("dog", []float64{0.2, 0.4, 0.1, 0.3})
+    db.Add("dog", []float32{0.2, 0.4, 0.1, 0.3})
 
     // Search for similar vectors
     query := []float32{0.15, 0.35, 0.15, 0.25}
@@ -79,29 +79,24 @@ MMR balances relevance to the query with diversity among results. Same 1000 vect
 
 | Variant | Time per call | Relative to Search |
 |---------|---------------|--------------------|
-| Search (Float32) | ~26ms | 1x |
-| SearchMMR (Float32, lambda=0.6) | ~72ms | ~2.8x |
-| Search (Float64) | ~27ms | 1x |
-| SearchMMR (Float64, lambda=0.6) | ~86ms | ~3.2x |
+| Search | ~0.5ms | 1x |
+| SearchMMR (lambda=0.6) | ~1.4ms | ~2.9x |
 
 Use `SearchMMR(query, topK)` for defaults; add `&MMROptions{Lambda: 0.7}` as third arg to tune.
 
 ### Search Performance (Linear Scaling)
 
+Approximate times on Apple M1 (1k vectors 128D ~0.5ms). Scale roughly with n and d:
+
 | Vectors | 128D | 384D | 768D | 1536D |
 |---------|------|------|------|-------|
-| 100     | 1ms  | 3ms  | 7ms  | 13ms  |
-| 1,000   | 11ms | 33ms | 66ms | 129ms |
-| 10,000  | 117ms| 326ms| 653ms| 1.3s  |
+| 100     | 0.05ms | 0.15ms | 0.3ms | 0.6ms |
+| 1,000   | 0.5ms | 1.5ms | 3ms | 6ms |
+| 10,000  | 5ms | 15ms | 30ms | 60ms |
 
 ### Distance Functions
 
-| Function | Performance | Best For |
-|----------|-------------|----------|
-| DotProduct | 0.4ms | Speed |
-| EuclideanDistance | 0.9ms | Geometric distance |
-| ManhattanDistance | 1.0ms | Sparse vectors |
-| CosineSimilarity | 1.1ms | Embeddings (default) |
+All use the same float32 path. CosineSimilarity (default) is typical; others are similar. For **L2-normalised** embeddings (e.g. Takara ds1-en-v1), use `DotProduct` for the same ranking as cosine with less work.
 
 ### Memory Usage
 
@@ -114,12 +109,15 @@ Use `SearchMMR(query, topK)` for defaults; add `&MMROptions{Lambda: 0.7}` as thi
 
 ## Common Embedding Dimensions
 
-| Model | Dimensions | Performance |
-|-------|------------|-------------|
-| OpenAI ada-002 | 1536 | 75 searches/s |
-| OpenAI text-embedding-3-small | 1536 | 75 searches/s |
-| Sentence Transformers | 384-768 | 150-300 searches/s |
-| BERT | 768 | 150 searches/s |
+All throughput numbers below are for **cosine similarity** (default) with 1k vectors, topK=10.
+
+| Model | Dimensions | Approx throughput (1k vectors) |
+|-------|------------|-------------------------------|
+| OpenAI ada-002 | 1536 | ~170 searches/s |
+| OpenAI text-embedding-3-small | 1536 | ~170 searches/s |
+| Sentence Transformers | 384-768 | ~330-670 searches/s |
+| Takara ds1-en-v1 | 512 | ~3600 (use `DotProduct`; embeddings are L2-normalised) |
+| 128D embeddings | 128 | ~2000 searches/s |
 
 ## Use Cases
 
@@ -140,7 +138,7 @@ Use `SearchMMR(query, topK)` for defaults; add `&MMROptions{Lambda: 0.7}` as thi
 
 - Zero external dependencies
 - Thread-safe operations
-- Support for float32/float64
+- float32 only (matches OpenAI, Cohere, sentence-transformers, etc.)
 - Automatic metadata inclusion
 - Batch operations
 - Multiple distance functions
