@@ -103,7 +103,7 @@ func TestBatchOperations(t *testing.T) {
 	db := NewVectorDB(0) // No dimension validation for mixed dimensions
 
 	// Prepare batch data (float32 only)
-	vectors := map[string]interface{}{
+	vectors := map[string]any{
 		"vec1": []float32{0.1, 0.2, 0.3},
 		"vec2": []float32{0.4, 0.5, 0.6},
 		"vec3": []float32{0.7, 0.8, 0.9},
@@ -166,7 +166,7 @@ func TestSearchWithFilter(t *testing.T) {
 
 func TestDistanceFunctions(t *testing.T) {
 	db := NewVectorDB(3)
-	vectors := map[string]interface{}{
+	vectors := map[string]any{
 		"vec1": []float32{1.0, 0.0, 0.0},
 		"vec2": []float32{0.0, 1.0, 0.0},
 		"vec3": []float32{0.0, 0.0, 1.0},
@@ -261,7 +261,7 @@ func TestMemoryStats(t *testing.T) {
 	db := NewVectorDB(0) // No dimension validation
 
 	// Add some vectors
-	vectors := map[string]interface{}{
+	vectors := map[string]any{
 		"vec1": []float32{0.1, 0.2, 0.3, 0.4},
 		"vec2": []float32{0.5, 0.6, 0.7, 0.8},
 	}
@@ -287,7 +287,7 @@ func BenchmarkSearch_Float32(b *testing.B) {
 	db := NewVectorDB(128) // 128-dimensional float32 vectors
 
 	// Add test vectors
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		data := make([]float32, 128)
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
@@ -310,7 +310,7 @@ func BenchmarkSearch_Float32(b *testing.B) {
 func BenchmarkSearch_512D(b *testing.B) {
 	const dim = 512
 	db := NewVectorDB(dim)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		data := make([]float32, dim)
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
@@ -332,7 +332,7 @@ func BenchmarkSearch_512D(b *testing.B) {
 func BenchmarkSearch_512D_DotProduct(b *testing.B) {
 	const dim = 512
 	db := NewVectorDB(dim, DotProduct)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		data := make([]float32, dim)
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
@@ -351,7 +351,7 @@ func BenchmarkSearch_512D_DotProduct(b *testing.B) {
 
 func BenchmarkSearchMMR_Float32(b *testing.B) {
 	db := NewVectorDB(128)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		data := make([]float32, 128)
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
@@ -372,8 +372,8 @@ func BenchmarkSearchMMR_Float32(b *testing.B) {
 func BenchmarkBatchAdd(b *testing.B) {
 	dim := 128
 	n := 500
-	vectors := make(map[string]interface{}, n)
-	for i := 0; i < n; i++ {
+	vectors := make(map[string]any, n)
+	for i := range n {
 		data := make([]float32, dim)
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
@@ -388,4 +388,3 @@ func BenchmarkBatchAdd(b *testing.B) {
 		db.Clear()
 	}
 }
-

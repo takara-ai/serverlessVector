@@ -3,6 +3,7 @@ package lib
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 )
@@ -15,15 +16,17 @@ type VectorDB struct {
 	distFunc  DistanceFunction
 }
 
-// NewVectorDB creates a new vector database 
+// NewVectorDB creates a new vector database
 // dimension: vector dimension (e.g., 384 for OpenAI, 1536 for text-embedding-ada-002)
-//           use 0 for no dimension validation (flexible dimensions)
+//
+//	use 0 for no dimension validation (flexible dimensions)
+//
 // distanceFunc: optional distance function (defaults to CosineSimilarity if not provided)
 func NewVectorDB(dimension int, distanceFunc ...DistanceFunction) *VectorDB {
 	if dimension < 0 {
 		panic("dimension must be >= 0 (use 0 for no validation)")
 	}
-	
+
 	df := CosineSimilarity // smart default for embeddings
 	if len(distanceFunc) > 0 {
 		df = distanceFunc[0]
@@ -37,7 +40,7 @@ func NewVectorDB(dimension int, distanceFunc ...DistanceFunction) *VectorDB {
 }
 
 // Add adds a vector to the database. data must be []float32 (matches embedding APIs).
-func (db *VectorDB) Add(id string, data interface{}, metadata ...VectorMetadata) error {
+func (db *VectorDB) Add(id string, data any, metadata ...VectorMetadata) error {
 	if id == "" {
 		return errors.New("vector ID cannot be empty")
 	}
@@ -87,7 +90,7 @@ func (db *VectorDB) Get(id string) (*Vector, error) {
 }
 
 // Update updates an existing vector. data must be []float32.
-func (db *VectorDB) Update(id string, data interface{}, metadata ...VectorMetadata) error {
+func (db *VectorDB) Update(id string, data any, metadata ...VectorMetadata) error {
 	if id == "" {
 		return errors.New("vector ID cannot be empty")
 	}
@@ -143,11 +146,10 @@ func (db *VectorDB) Clear() {
 	db.vectors = make(map[string]*Vector)
 }
 
-
 // BatchAdd adds multiple vectors efficiently in a single operation.
 // New vectors are built outside the lock; the write lock is held only for the map merge,
 // so tail latencies for concurrent readers are not raised by long write lock duration.
-func (db *VectorDB) BatchAdd(vectors map[string]interface{}, metadata map[string]VectorMetadata) error {
+func (db *VectorDB) BatchAdd(vectors map[string]any, metadata map[string]VectorMetadata) error {
 	if len(vectors) == 0 {
 		return errors.New("no vectors provided")
 	}
@@ -182,12 +184,8 @@ func (db *VectorDB) BatchAdd(vectors map[string]interface{}, metadata map[string
 
 	db.mu.Lock()
 	newMap := make(map[string]*Vector, len(db.vectors)+len(batchMap))
-	for k, v := range db.vectors {
-		newMap[k] = v
-	}
-	for k, v := range batchMap {
-		newMap[k] = v
-	}
+	maps.Copy(newMap, db.vectors)
+	maps.Copy(newMap, batchMap)
 	db.vectors = newMap
 	db.mu.Unlock()
 

@@ -2,7 +2,7 @@ package lib
 
 // GetStats returns database statistics.
 // It snapshots under RLock then computes stats outside the lock to reduce lock hold time.
-func (db *VectorDB) GetStats() map[string]interface{} {
+func (db *VectorDB) GetStats() map[string]any {
 	db.mu.RLock()
 	totalVectors := len(db.vectors)
 	totalDimensions := 0
@@ -20,7 +20,7 @@ func (db *VectorDB) GetStats() map[string]interface{} {
 	// float32: 4 bytes per dimension + per-vector overhead
 	memoryUsage := int64(totalDimensions)*4 + int64(totalVectors)*256
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_vectors":     totalVectors,
 		"total_dimensions":  totalDimensions,
 		"avg_dimensions":    avgDimensions,

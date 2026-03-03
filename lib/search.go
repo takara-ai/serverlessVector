@@ -15,7 +15,7 @@ type resultHeap struct {
 	lowerIsBetter bool
 }
 
-func (h resultHeap) Len() int { return len(h.results) }
+func (h resultHeap) Len() int      { return len(h.results) }
 func (h resultHeap) Swap(i, j int) { h.results[i], h.results[j] = h.results[j], h.results[i] }
 func (h resultHeap) Less(i, j int) bool {
 	if h.lowerIsBetter {
@@ -23,8 +23,8 @@ func (h resultHeap) Less(i, j int) bool {
 	}
 	return h.results[i].Score < h.results[j].Score // min at root for similarity
 }
-func (h *resultHeap) Push(x interface{}) { h.results = append(h.results, x.(SimilarityResult)) }
-func (h *resultHeap) Pop() interface{} {
+func (h *resultHeap) Push(x any) { h.results = append(h.results, x.(SimilarityResult)) }
+func (h *resultHeap) Pop() any {
 	n := len(h.results)
 	item := h.results[n-1]
 	h.results = h.results[:n-1]
@@ -33,7 +33,7 @@ func (h *resultHeap) Pop() interface{} {
 
 // Search performs fast similarity search
 // Returns top 10 results by default, or specify topK
-func (db *VectorDB) Search(query interface{}, topK ...int) (*SearchResult, error) {
+func (db *VectorDB) Search(query any, topK ...int) (*SearchResult, error) {
 	k := 10 // smart default
 	if len(topK) > 0 {
 		k = topK[0]
@@ -43,7 +43,7 @@ func (db *VectorDB) Search(query interface{}, topK ...int) (*SearchResult, error
 
 // SearchWithFilter performs similarity search with a filter on vectors (e.g. by metadata/tags).
 // filter is called for each vector; only vectors for which filter returns true are considered.
-func (db *VectorDB) SearchWithFilter(query interface{}, topK int, filter func(*Vector) bool) (*SearchResult, error) {
+func (db *VectorDB) SearchWithFilter(query any, topK int, filter func(*Vector) bool) (*SearchResult, error) {
 	if topK <= 0 {
 		topK = 10
 	}
@@ -51,12 +51,12 @@ func (db *VectorDB) SearchWithFilter(query interface{}, topK int, filter func(*V
 }
 
 // BatchSearch performs search on multiple queries efficiently
-func (db *VectorDB) BatchSearch(queries map[string]interface{}, topK ...int) (map[string]*SearchResult, error) {
+func (db *VectorDB) BatchSearch(queries map[string]any, topK ...int) (map[string]*SearchResult, error) {
 	k := 10 // smart default
 	if len(topK) > 0 {
 		k = topK[0]
 	}
-	
+
 	results := make(map[string]*SearchResult)
 	for queryID, query := range queries {
 		result, err := db.searchCore(query, k, true, nil)
@@ -71,7 +71,7 @@ func (db *VectorDB) BatchSearch(queries map[string]interface{}, topK ...int) (ma
 
 // SearchMMR performs Maximal Marginal Relevance search. Call with (query, topK) for defaults;
 // pass optional *MMROptions to tune. Results are relevant to the query but diverse from each other.
-func (db *VectorDB) SearchMMR(query interface{}, topK int, opts ...*MMROptions) (*SearchResult, error) {
+func (db *VectorDB) SearchMMR(query any, topK int, opts ...*MMROptions) (*SearchResult, error) {
 	if topK <= 0 {
 		topK = 10
 	}
@@ -90,7 +90,7 @@ func (db *VectorDB) SearchMMR(query interface{}, topK int, opts ...*MMROptions) 
 
 // SearchMMRParams is the explicit-parameter form of MMR (lambda and optional fetchFactor).
 // For the simpler API use SearchMMR(query, topK) or SearchMMR(query, topK, &MMROptions{...}).
-func (db *VectorDB) SearchMMRParams(query interface{}, topK int, lambda float64, fetchFactor ...int) (*SearchResult, error) {
+func (db *VectorDB) SearchMMRParams(query any, topK int, lambda float64, fetchFactor ...int) (*SearchResult, error) {
 	if topK <= 0 {
 		topK = 10
 	}
@@ -102,7 +102,7 @@ func (db *VectorDB) SearchMMRParams(query interface{}, topK int, lambda float64,
 	return db.searchMMRCore(query, topK, lambda, ff)
 }
 
-func (db *VectorDB) searchMMRCore(query interface{}, topK int, lambda float64, ff int) (*SearchResult, error) {
+func (db *VectorDB) searchMMRCore(query any, topK int, lambda float64, ff int) (*SearchResult, error) {
 	if topK <= 0 {
 		topK = 10
 	}
@@ -187,7 +187,7 @@ func (db *VectorDB) searchMMRCore(query interface{}, topK int, lambda float64, f
 }
 
 // searchCore is the shared backend implementation.
-func (db *VectorDB) searchCore(query interface{}, topK int, includeMetadata bool, filterFunc func(*Vector) bool) (*SearchResult, error) {
+func (db *VectorDB) searchCore(query any, topK int, includeMetadata bool, filterFunc func(*Vector) bool) (*SearchResult, error) {
 	query32, err := queryToFloat32(query)
 	if err != nil {
 		return nil, err

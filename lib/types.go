@@ -6,7 +6,7 @@ import (
 )
 
 // copyFloat32Slice copies []float32 and returns (copy, dimension, error). Rejects non-float32.
-func copyFloat32Slice(data interface{}) ([]float32, int, error) {
+func copyFloat32Slice(data any) ([]float32, int, error) {
 	v, ok := data.([]float32)
 	if !ok {
 		return nil, 0, fmt.Errorf("unsupported vector type: %T (use []float32)", data)
@@ -20,7 +20,7 @@ func copyFloat32Slice(data interface{}) ([]float32, int, error) {
 }
 
 // queryToFloat32 validates and returns the query as []float32.
-func queryToFloat32(query interface{}) ([]float32, error) {
+func queryToFloat32(query any) ([]float32, error) {
 	v, ok := query.([]float32)
 	if !ok {
 		return nil, fmt.Errorf("unsupported query type: %T (use []float32)", query)
@@ -62,7 +62,7 @@ type ValidationResult struct {
 // ValidationError represents a specific validation error
 type ValidationError struct {
 	Field   string
-	Value   interface{}
+	Value   any
 	Message string
 }
 
