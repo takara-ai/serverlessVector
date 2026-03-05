@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0](https://github.com/takara-ai/serverlessVector/compare/v1.0.0...v2.0.0) (2026-03-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* Vectors are float32 only. Add/Update/BatchAdd and Search accept []float32; []float64 is rejected. Vector.Data is []float32; Vector.Type removed. Float64 constant removed from public API.
+
+### Features
+
+* **search:** add MMR search with SearchMMR API and MMROptions ([c66cb57](https://github.com/takara-ai/serverlessVector/commit/c66cb57d67b33e48063356e533b2397670553199))
+
+
+### Performance Improvements
+
+* float32-only storage, heap topK, typed distance; add SearchWithFilter ([e740842](https://github.com/takara-ai/serverlessVector/commit/e7408427f464771452d66bc4b1bd6c7154ce09de))
+* **lib:** shorten lock hold time in BatchAdd and GetStats ([0ebb0ef](https://github.com/takara-ai/serverlessVector/commit/0ebb0effb79905e6b103be31db52665532529921))
+
 ## 1.0.0 (2025-09-21)
 
 
