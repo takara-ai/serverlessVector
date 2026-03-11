@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/takara-ai/serverlessVector/compare/v2.1.0...v2.1.1) (2026-03-11)
+
+
+### Bug Fixes
+
+* use module path github.com/takara-ai/serverlessVector/v2 for v2 semver ([cb71cd5](https://github.com/takara-ai/serverlessVector/commit/cb71cd5e37a7545b6ff3b3e615c96968b007488e))
+
 ## [2.1.0](https://github.com/takara-ai/serverlessVector/compare/v2.0.0...v2.1.0) (2026-03-11)
 
 
