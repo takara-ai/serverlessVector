@@ -90,8 +90,29 @@ type SearchResult struct {
 
 // MMROptions configures Maximal Marginal Relevance search. Nil or zero values use defaults.
 type MMROptions struct {
-	Lambda      float64 // Balance relevance (1) vs diversity (0). Default 0.6.
-	FetchFactor int     // Candidate pool size = FetchFactor * topK. Default 5.
+	Lambda      float64      // Balance relevance (1) vs diversity (0). Default 0.6.
+	FetchFactor int          // Candidate pool size = FetchFactor * topK. Default 5.
+	ScoreMode   MMRScoreMode // Mode for relevance scoring (QueryOnly, BaseScoreOnly, or Blend).
+	BlendAlpha  float64      // Alpha for Blend mode: relevance = Alpha*querySim + (1-Alpha)*baseScore.
+}
+
+// MMRScoreMode defines how relevance is computed in MMR.
+type MMRScoreMode int
+
+const (
+	// MMRScoreQueryOnly uses query similarity as relevance (default behavior).
+	MMRScoreQueryOnly MMRScoreMode = iota
+	// MMRScoreBaseOnly uses caller-provided BaseScore as relevance (ignoring query similarity).
+	MMRScoreBaseOnly
+	// MMRScoreBlend uses a weighted blend of query similarity and BaseScore.
+	MMRScoreBlend
+)
+
+// MMRCandidate represents a candidate for MMR selection provided by the caller.
+type MMRCandidate struct {
+	ID        string
+	Embedding []float32
+	BaseScore float64 // External relevance score. Negative/NaN treated as 0.
 }
 
 // String returns a string representation of the distance function

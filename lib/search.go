@@ -102,7 +102,131 @@ func (db *VectorDB) SearchMMRParams(query any, topK int, lambda float64, fetchFa
 	return db.searchMMRCore(query, topK, lambda, ff)
 }
 
+// SelectMMRFromCandidates runs MMR over a provided candidate set.
+// It uses db only for its DistanceFunction. FetchFactor is ignored.
+// Callers must pass normalized embeddings if using CosineSimilarity.
+func (db *VectorDB) SelectMMRFromCandidates(candidates []MMRCandidate, topK int, opts *MMROptions) (*SearchResult, error) {
+	if topK <= 0 {
+		topK = 10
+	}
+	if len(candidates) == 0 {
+		return &SearchResult{Results: []SimilarityResult{}, Total: 0}, nil
+	}
+	lambda := 0.6
+	if opts != nil && opts.Lambda > 0 {
+		lambda = math.Max(0, math.Min(1, opts.Lambda))
+	}
+
+	candResults := make(map[string]SimilarityResult, len(candidates))
+	candVecs := make(map[string][]float32, len(candidates))
+	relevance := make(map[string]float64, len(candidates))
+
+	for _, c := range candidates {
+		// Treat negative/NaN BaseScore as 0
+		score := c.BaseScore
+		if math.IsNaN(score) || score < 0 {
+			score = 0
+		}
+		relevance[c.ID] = score
+		candVecs[c.ID] = c.Embedding
+		candResults[c.ID] = SimilarityResult{
+			ID:    c.ID,
+			Score: c.BaseScore, // Keep base score in result
+			// Metadata empty
+		}
+	}
+
+	return mmrGreedy(candResults, candVecs, relevance, topK, lambda, db.distFunc)
+}
+
+// SearchMMRWithScores runs MMR with custom relevance scoring (QueryOnly, BaseScoreOnly, or Blend).
+// When baseScores are provided, they can override or blend with query similarity.
+func (db *VectorDB) SearchMMRWithScores(query any, topK int, baseScores map[string]float64, opts *MMROptions) (*SearchResult, error) {
+	if topK <= 0 {
+		topK = 10
+	}
+	lambda := 0.6
+	ff := 5
+	var scoreMode MMRScoreMode
+	var blendAlpha float64
+
+	if opts != nil {
+		if opts.Lambda > 0 {
+			lambda = math.Max(0, math.Min(1, opts.Lambda))
+		}
+		if opts.FetchFactor > 0 {
+			ff = opts.FetchFactor
+		}
+		scoreMode = opts.ScoreMode
+		blendAlpha = opts.BlendAlpha
+	}
+
+	// 1. Get candidates via standard search
+	candidateK := topK * ff
+	candidates, err := db.searchCore(query, candidateK, true, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(candidates.Results) == 0 {
+		return &SearchResult{Results: []SimilarityResult{}, Total: 0}, nil
+	}
+
+	// 2. Resolve candidate vectors
+	candVecs := make(map[string][]float32, len(candidates.Results))
+	db.mu.RLock()
+	for _, r := range candidates.Results {
+		v, ok := db.vectors[r.ID]
+		if ok {
+			candVecs[r.ID] = v.Data
+		}
+	}
+	db.mu.RUnlock()
+	if len(candVecs) != len(candidates.Results) {
+		return nil, errors.New("MMR: could not resolve all candidate vectors")
+	}
+
+	// 3. Compute relevance based on scoreMode
+	toRelevance := func(score float64) float64 {
+		switch db.distFunc {
+		case EuclideanDistance, ManhattanDistance:
+			return 1.0 / (1.0 + score)
+		default:
+			return score
+		}
+	}
+
+	relevance := make(map[string]float64, len(candidates.Results))
+	candResults := make(map[string]SimilarityResult, len(candidates.Results))
+
+	for _, r := range candidates.Results {
+		candResults[r.ID] = r
+		queryRel := toRelevance(r.Score)
+		baseScore := 0.0
+		if baseScores != nil {
+			baseScore = baseScores[r.ID] // missing treats as 0
+		}
+
+		var finalRel float64
+		switch scoreMode {
+		case MMRScoreQueryOnly:
+			finalRel = queryRel
+		case MMRScoreBaseOnly:
+			finalRel = baseScore
+		case MMRScoreBlend:
+			finalRel = blendAlpha*queryRel + (1.0-blendAlpha)*baseScore
+		default:
+			finalRel = queryRel
+		}
+		relevance[r.ID] = finalRel
+	}
+
+	return mmrGreedy(candResults, candVecs, relevance, topK, lambda, db.distFunc)
+}
+
 func (db *VectorDB) searchMMRCore(query any, topK int, lambda float64, ff int) (*SearchResult, error) {
+	// Re-implement searchMMRCore using SearchMMRWithScores logic (QueryOnly mode)
+	// or directly call mmrGreedy to share code.
+
 	if topK <= 0 {
 		topK = 10
 	}
@@ -115,16 +239,22 @@ func (db *VectorDB) searchMMRCore(query any, topK int, lambda float64, ff int) (
 	if len(candidates.Results) == 0 {
 		return &SearchResult{Results: []SimilarityResult{}, Total: 0}, nil
 	}
+	// Note: Original searchMMRCore had a check `if len(candidates.Results) <= topK { return candidates, nil }`
+	// but strictly speaking, even if we have fewer candidates, MMR re-ranking might change order if lambda < 1?
+	// Actually if K <= topK, we select all of them. The order might change though.
+	// The original code returned early, implying order from searchCore (similarity) is accepted if we don't have enough candidates to pick from?
+	// But MMR is about diversity. If I have 3 results and topK=10, do I want them re-ordered by diversity?
+	// Original code returned candidates directly. I will preserve this behavior.
 	if len(candidates.Results) <= topK {
 		return candidates, nil
 	}
 
-	candVecs := make(map[string]*Vector, len(candidates.Results))
+	candVecs := make(map[string][]float32, len(candidates.Results))
 	db.mu.RLock()
 	for _, r := range candidates.Results {
 		v, ok := db.vectors[r.ID]
 		if ok {
-			candVecs[r.ID] = v
+			candVecs[r.ID] = v.Data
 		}
 	}
 	db.mu.RUnlock()
@@ -141,38 +271,67 @@ func (db *VectorDB) searchMMRCore(query any, topK int, lambda float64, ff int) (
 		}
 	}
 
-	relevanceToQuery := make(map[string]float64)
+	relevance := make(map[string]float64, len(candidates.Results))
+	candResults := make(map[string]SimilarityResult, len(candidates.Results))
 	for _, r := range candidates.Results {
-		relevanceToQuery[r.ID] = toRelevance(r.Score)
+		candResults[r.ID] = r
+		relevance[r.ID] = toRelevance(r.Score)
+	}
+
+	return mmrGreedy(candResults, candVecs, relevance, topK, lambda, db.distFunc)
+}
+
+// mmrGreedy implements the shared greedy selection loop.
+func mmrGreedy(
+	candidates map[string]SimilarityResult,
+	vectors map[string][]float32,
+	relevance map[string]float64,
+	topK int,
+	lambda float64,
+	distFunc DistanceFunction,
+) (*SearchResult, error) {
+	toRelevance := func(score float64) float64 {
+		switch distFunc {
+		case EuclideanDistance, ManhattanDistance:
+			return 1.0 / (1.0 + score)
+		default:
+			return score
+		}
 	}
 
 	selected := make([]SimilarityResult, 0, topK)
-	remaining := make(map[string]SimilarityResult)
-	for _, r := range candidates.Results {
-		remaining[r.ID] = r
+	remaining := make(map[string]SimilarityResult, len(candidates))
+	for id, r := range candidates {
+		remaining[id] = r
 	}
 
+	// For loop
 	for len(selected) < topK && len(remaining) > 0 {
 		var bestID string
 		bestMMR := math.Inf(-1)
+
 		for id := range remaining {
-			relQ := relevanceToQuery[id]
+			rel := relevance[id]
 			maxSimToSelected := 0.0
-			vecD := candVecs[id]
+			vecD := vectors[id]
+
 			for _, s := range selected {
-				vecS := candVecs[s.ID]
-				raw := db.distanceFloat32(vecD.Data, vecS.Data, db.distFunc)
+				vecS := vectors[s.ID]
+				// Use package-level DistanceFloat32 to avoid DB dependency
+				raw := DistanceFloat32(vecD, vecS, distFunc)
 				sim := toRelevance(raw)
 				if sim > maxSimToSelected {
 					maxSimToSelected = sim
 				}
 			}
-			mmrScore := lambda*relQ - (1.0-lambda)*maxSimToSelected
+
+			mmrScore := lambda*rel - (1.0-lambda)*maxSimToSelected
 			if mmrScore > bestMMR {
 				bestMMR = mmrScore
 				bestID = id
 			}
 		}
+
 		if bestID == "" {
 			break
 		}

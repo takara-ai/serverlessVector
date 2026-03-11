@@ -29,6 +29,12 @@ type SimilarityResult = lib.SimilarityResult
 // MMROptions configures MMR search; nil uses defaults
 type MMROptions = lib.MMROptions
 
+// MMRScoreMode defines how relevance is computed in MMR
+type MMRScoreMode = lib.MMRScoreMode
+
+// MMRCandidate represents a candidate for MMR selection
+type MMRCandidate = lib.MMRCandidate
+
 // Vector type constant (float32 only, matches embedding APIs)
 const Float32 VectorType = lib.Float32
 
@@ -38,6 +44,13 @@ const (
 	DotProduct        DistanceFunction = lib.DotProduct
 	EuclideanDistance DistanceFunction = lib.EuclideanDistance
 	ManhattanDistance DistanceFunction = lib.ManhattanDistance
+)
+
+// Constants for MMR score modes
+const (
+	MMRScoreQueryOnly MMRScoreMode = lib.MMRScoreQueryOnly
+	MMRScoreBaseOnly  MMRScoreMode = lib.MMRScoreBaseOnly
+	MMRScoreBlend     MMRScoreMode = lib.MMRScoreBlend
 )
 
 // NewVectorDB creates a new vector database

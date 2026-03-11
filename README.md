@@ -80,6 +80,23 @@ stats := db.GetStats()
 // MMR: relevant but diverse results (optional; see Performance section)
 results, err = db.SearchMMR(queryVector, 5)
 results, err = db.SearchMMR(queryVector, 5, &serverlessVector.MMROptions{Lambda: 0.7, FetchFactor: 5})
+
+// Advanced MMR: External scores and Candidate sets
+// 1. Run MMR on a provided set of candidates (ignoring DB storage)
+candidates := []serverlessVector.MMRCandidate{
+    {ID: "A", Embedding: []float32{...}, BaseScore: 0.9},
+    {ID: "B", Embedding: []float32{...}, BaseScore: 0.8},
+}
+results, err = db.SelectMMRFromCandidates(candidates, 5, &serverlessVector.MMROptions{Lambda: 0.5})
+
+// 2. Search with external base scores (blending or overriding query similarity)
+baseScores := map[string]float64{"doc1": 1.0, "doc2": 0.5}
+// Blend query similarity (0.5) and base score (0.5)
+results, err = db.SearchMMRWithScores(query, 5, baseScores, &serverlessVector.MMROptions{
+    Lambda: 0.6,
+    ScoreMode: serverlessVector.MMRScoreBlend,
+    BlendAlpha: 0.5,
+})
 ```
 
 ## Performance
@@ -97,6 +114,10 @@ Benchmarks on Apple M1. Scale roughly with n and d. For **L2-normalised** embedd
 **Memory (per vector / 10K vectors)** — 128D: 0.5KB / 27MB · 384D: 1.5KB / 76MB · 768D: 3KB / 149MB · 1536D: 6KB / 295MB
 
 **SearchMMR** — Balances relevance and diversity. ~1.4ms (2.9x Search) at 1K vectors 128D, topK=10. `SearchMMR(query, topK)` or add `&MMROptions{Lambda: 0.7, FetchFactor: 5}` to tune.
+
+**SelectMMRFromCandidates** — Run MMR on a provided set of candidates (ignoring DB storage). Useful for re-ranking external search results.
+
+**SearchMMRWithScores** — Standard MMR search but with external base scores (e.g. from a keyword search or other signals). Supports `QueryOnly`, `BaseScoreOnly`, and `Blend` modes.
 
 **Throughput (1K vectors, topK=10, cosine)** — Takara ds1-en-v1 512D (use DotProduct): ~3600/s · OpenAI 1536D: ~170/s · Sentence Transformers 384–768D: ~330–670/s · 128D: ~2000/s
 
