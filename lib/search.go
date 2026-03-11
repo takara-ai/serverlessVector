@@ -116,27 +116,7 @@ func (db *VectorDB) SelectMMRFromCandidates(candidates []MMRCandidate, topK int,
 	if opts != nil && opts.Lambda > 0 {
 		lambda = math.Max(0, math.Min(1, opts.Lambda))
 	}
-
-	candResults := make(map[string]SimilarityResult, len(candidates))
-	candVecs := make(map[string][]float32, len(candidates))
-	relevance := make(map[string]float64, len(candidates))
-
-	for _, c := range candidates {
-		// Treat negative/NaN BaseScore as 0
-		score := c.BaseScore
-		if math.IsNaN(score) || score < 0 {
-			score = 0
-		}
-		relevance[c.ID] = score
-		candVecs[c.ID] = c.Embedding
-		candResults[c.ID] = SimilarityResult{
-			ID:    c.ID,
-			Score: c.BaseScore, // Keep base score in result
-			// Metadata empty
-		}
-	}
-
-	return mmrGreedy(candResults, candVecs, relevance, topK, lambda, db.distFunc)
+	return mmrGreedyCandidates(candidates, topK, lambda, db.distFunc)
 }
 
 // SearchMMRWithScores runs MMR with custom relevance scoring (QueryOnly, BaseScoreOnly, or Blend).
@@ -337,6 +317,97 @@ func mmrGreedy(
 		}
 		selected = append(selected, remaining[bestID])
 		delete(remaining, bestID)
+	}
+
+	return &SearchResult{
+		Results: selected,
+		Total:   len(selected),
+	}, nil
+}
+
+// mmrGreedyCandidates is an index-driven MMR path for caller-provided candidates.
+// It avoids string-keyed maps in the hot loop to reduce allocations and lookup cost.
+func mmrGreedyCandidates(candidates []MMRCandidate, topK int, lambda float64, distFunc DistanceFunction) (*SearchResult, error) {
+	n := len(candidates)
+	if n == 0 {
+		return &SearchResult{Results: []SimilarityResult{}, Total: 0}, nil
+	}
+	if topK > n {
+		topK = n
+	}
+
+	results := make([]SimilarityResult, n)
+	relevance := make([]float64, n)
+	maxSimToSelected := make([]float64, n)
+	remaining := make([]int, n)
+	selected := make([]SimilarityResult, 0, topK)
+	norms := make([]float64, 0)
+	if distFunc == CosineSimilarity {
+		norms = make([]float64, n)
+	}
+
+	for i, c := range candidates {
+		remaining[i] = i
+		rel := c.BaseScore
+		if math.IsNaN(rel) || rel < 0 {
+			rel = 0
+		}
+		relevance[i] = rel
+		if distFunc == CosineSimilarity {
+			norms[i] = norm32(c.Embedding)
+		}
+		results[i] = SimilarityResult{
+			ID:    c.ID,
+			Score: c.BaseScore, // Keep base score in result
+		}
+	}
+
+	similarity := func(i, j int) float64 {
+		switch distFunc {
+		case CosineSimilarity:
+			ni, nj := norms[i], norms[j]
+			if ni == 0 || nj == 0 {
+				return 0
+			}
+			return dotProduct32(candidates[i].Embedding, candidates[j].Embedding) / (ni * nj)
+		case DotProduct:
+			return dotProduct32(candidates[i].Embedding, candidates[j].Embedding)
+		case EuclideanDistance:
+			return 1.0 / (1.0 + euclidean32(candidates[i].Embedding, candidates[j].Embedding))
+		case ManhattanDistance:
+			return 1.0 / (1.0 + manhattan32(candidates[i].Embedding, candidates[j].Embedding))
+		default:
+			return dotProduct32(candidates[i].Embedding, candidates[j].Embedding)
+		}
+	}
+
+	for len(selected) < topK && len(remaining) > 0 {
+		bestPos := 0
+		bestIdx := remaining[0]
+		bestMMR := lambda*relevance[bestIdx] - (1.0-lambda)*maxSimToSelected[bestIdx]
+
+		for pos := 1; pos < len(remaining); pos++ {
+			idx := remaining[pos]
+			mmrScore := lambda*relevance[idx] - (1.0-lambda)*maxSimToSelected[idx]
+			if mmrScore > bestMMR {
+				bestMMR = mmrScore
+				bestIdx = idx
+				bestPos = pos
+			}
+		}
+
+		selected = append(selected, results[bestIdx])
+
+		last := len(remaining) - 1
+		remaining[bestPos] = remaining[last]
+		remaining = remaining[:last]
+
+		for _, idx := range remaining {
+			sim := similarity(idx, bestIdx)
+			if sim > maxSimToSelected[idx] {
+				maxSimToSelected[idx] = sim
+			}
+		}
 	}
 
 	return &SearchResult{

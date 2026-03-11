@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"testing"
+
+	svlib "github.com/takara-ai/serverlessVector/v2/lib"
 )
 
 func TestVectorDB_Float32(t *testing.T) {
@@ -493,6 +495,145 @@ func BenchmarkSearchMMR_Float32(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = db.SearchMMR(query, 10)
+	}
+}
+
+// BenchmarkSelectMMRFromCandidates_CurationScale benchmarks the MMR candidate API
+// at a common curation workload size (pool=500, topK=50).
+func BenchmarkSelectMMRFromCandidates_CurationScale(b *testing.B) {
+	const (
+		dim  = 512
+		pool = 500
+		topK = 50
+	)
+
+	db := NewVectorDB(dim, DotProduct)
+	candidates := make([]MMRCandidate, pool)
+
+	for i := range pool {
+		emb := make([]float32, dim)
+		for j := range emb {
+			emb[j] = float32((i+j)%17) * 0.01
+		}
+		candidates[i] = MMRCandidate{
+			ID:        fmt.Sprintf("cand-%d", i),
+			Embedding: emb,
+			BaseScore: 1.0 - float64(i)/float64(pool),
+		}
+	}
+
+	opts := &MMROptions{Lambda: 0.6}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = db.SelectMMRFromCandidates(candidates, topK, opts)
+	}
+}
+
+func BenchmarkSelectMMRFromCandidates_CurationScale_BaselineMapVsOptimized(b *testing.B) {
+	const (
+		dim  = 512
+		pool = 500
+		topK = 50
+	)
+
+	db := NewVectorDB(dim, DotProduct)
+	candidates := make([]MMRCandidate, pool)
+	for i := range pool {
+		emb := make([]float32, dim)
+		for j := range emb {
+			emb[j] = float32((i+j)%17) * 0.01
+		}
+		candidates[i] = MMRCandidate{
+			ID:        fmt.Sprintf("cand-%d", i),
+			Embedding: emb,
+			BaseScore: 1.0 - float64(i)/float64(pool),
+		}
+	}
+	opts := &MMROptions{Lambda: 0.6}
+
+	b.Run("baseline_map_loop", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = mmrGreedyMapBaseline(candidates, topK, opts.Lambda, DotProduct)
+		}
+	})
+
+	b.Run("optimized_api", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = db.SelectMMRFromCandidates(candidates, topK, opts)
+		}
+	})
+}
+
+func mmrGreedyMapBaseline(candidates []MMRCandidate, topK int, lambda float64, distFunc DistanceFunction) *SearchResult {
+	toRelevance := func(score float64) float64 {
+		switch distFunc {
+		case EuclideanDistance, ManhattanDistance:
+			return 1.0 / (1.0 + score)
+		default:
+			return score
+		}
+	}
+
+	candResults := make(map[string]SimilarityResult, len(candidates))
+	candVecs := make(map[string][]float32, len(candidates))
+	relevance := make(map[string]float64, len(candidates))
+
+	for _, c := range candidates {
+		score := c.BaseScore
+		if math.IsNaN(score) || score < 0 {
+			score = 0
+		}
+		relevance[c.ID] = score
+		candVecs[c.ID] = c.Embedding
+		candResults[c.ID] = SimilarityResult{
+			ID:    c.ID,
+			Score: c.BaseScore,
+		}
+	}
+
+	selected := make([]SimilarityResult, 0, topK)
+	remaining := make(map[string]SimilarityResult, len(candResults))
+	for id, r := range candResults {
+		remaining[id] = r
+	}
+
+	for len(selected) < topK && len(remaining) > 0 {
+		var bestID string
+		bestMMR := math.Inf(-1)
+
+		for id := range remaining {
+			rel := relevance[id]
+			maxSimToSelected := 0.0
+			vecD := candVecs[id]
+
+			for _, s := range selected {
+				vecS := candVecs[s.ID]
+				raw := svlib.DistanceFloat32(vecD, vecS, svlib.DistanceFunction(distFunc))
+				sim := toRelevance(raw)
+				if sim > maxSimToSelected {
+					maxSimToSelected = sim
+				}
+			}
+
+			mmrScore := lambda*rel - (1.0-lambda)*maxSimToSelected
+			if mmrScore > bestMMR {
+				bestMMR = mmrScore
+				bestID = id
+			}
+		}
+
+		if bestID == "" {
+			break
+		}
+		selected = append(selected, remaining[bestID])
+		delete(remaining, bestID)
+	}
+
+	return &SearchResult{
+		Results: selected,
+		Total:   len(selected),
 	}
 }
 
