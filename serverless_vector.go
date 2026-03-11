@@ -3,7 +3,7 @@
 package serverlessVector
 
 // Re-export the main types and functions from the lib package
-import "github.com/takara-ai/serverlessVector/lib"
+import "github.com/takara-ai/serverlessVector/v2/lib"
 
 // VectorDB is the main vector database interface
 type VectorDB = lib.VectorDB
