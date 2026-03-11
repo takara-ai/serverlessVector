@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.2](https://github.com/takara-ai/serverlessVector/compare/v2.1.1...v2.1.2) (2026-03-11)
+
+
+### Performance Improvements
+
+* **mmr:** optimize SelectMMRFromCandidates with slice-based hot path ([c5e3651](https://github.com/takara-ai/serverlessVector/commit/c5e3651f7b713564abea9490c0f40637123d60a1))
+
 ## [2.1.1](https://github.com/takara-ai/serverlessVector/compare/v2.1.0...v2.1.1) (2026-03-11)
 
 
