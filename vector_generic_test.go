@@ -257,6 +257,134 @@ func TestSearchMMR(t *testing.T) {
 	}
 }
 
+func TestSelectMMRFromCandidates(t *testing.T) {
+	// Use DotProduct for simpler manual calculation (no norm)
+	db := NewVectorDB(3, DotProduct)
+
+	// Candidates:
+	// A: BaseScore=1.0, Vector=[1,0,0]
+	// B: BaseScore=0.9, Vector=[1,0,0] (Very similar to A)
+	// C: BaseScore=0.8, Vector=[0,1,0] (Orthogonal to A)
+	candidates := []MMRCandidate{
+		{ID: "A", BaseScore: 1.0, Embedding: []float32{1, 0, 0}},
+		{ID: "B", BaseScore: 0.9, Embedding: []float32{1, 0, 0}},
+		{ID: "C", BaseScore: 0.8, Embedding: []float32{0, 1, 0}},
+	}
+
+	// 1. Lambda=1 (Pure BaseScore relevance)
+	// Should pick A (1.0), then B (0.9), then C (0.8)
+	res1, err := db.SelectMMRFromCandidates(candidates, 3, &MMROptions{Lambda: 1.0})
+	if err != nil {
+		t.Fatalf("SelectMMR failed: %v", err)
+	}
+	if len(res1.Results) != 3 {
+		t.Fatalf("Expected 3 results, got %d", len(res1.Results))
+	}
+	if res1.Results[0].ID != "A" || res1.Results[1].ID != "B" || res1.Results[2].ID != "C" {
+		t.Errorf("Lambda=1 expected A, B, C; got %v", res1.Results)
+	}
+
+	// 2. Lambda=0.5 (Diversity matters)
+	// Pick 1: A (highest score 1.0)
+	// Pick 2:
+	//   B: rel=0.9, sim(A,B)=1.0 -> 0.5*0.9 - 0.5*1.0 = -0.05
+	//   C: rel=0.8, sim(A,C)=0.0 -> 0.5*0.8 - 0.5*0.0 = 0.40
+	// So C should be picked second.
+	res2, err := db.SelectMMRFromCandidates(candidates, 3, &MMROptions{Lambda: 0.5})
+	if err != nil {
+		t.Fatalf("SelectMMR failed: %v", err)
+	}
+	if res2.Results[0].ID != "A" {
+		t.Errorf("First result should be A, got %s", res2.Results[0].ID)
+	}
+	if res2.Results[1].ID != "C" {
+		t.Errorf("Second result should be C (diversity), got %s", res2.Results[1].ID)
+	}
+	if res2.Results[2].ID != "B" {
+		t.Errorf("Third result should be B, got %s", res2.Results[2].ID)
+	}
+}
+
+func TestSearchMMRWithScores(t *testing.T) {
+	db := NewVectorDB(3, DotProduct)
+	_ = db.Add("A", []float32{1, 0, 0})
+	_ = db.Add("B", []float32{1, 0, 0}) // Same as A
+	_ = db.Add("C", []float32{0, 1, 0}) // Orthogonal
+
+	query := []float32{1, 0, 0}
+	// Query Similarity: A=1, B=1, C=0
+
+	// 1. QueryOnly (Default) - Regression check
+	// Should behave like standard SearchMMR
+	// Lambda=0.4
+	// A: 1.0. Pick A.
+	// B: rel=1.0, sim=1.0 -> 0.4*1 - 0.6*1 = -0.2
+	// C: rel=0.0, sim=0.0 -> 0.0
+	// C > B. So A, C, B.
+	resQ, err := db.SearchMMRWithScores(query, 3, nil, &MMROptions{Lambda: 0.4, ScoreMode: MMRScoreQueryOnly})
+	if err != nil {
+		t.Fatalf("SearchMMRWithScores failed: %v", err)
+	}
+	if resQ.Results[0].ID != "A" && resQ.Results[0].ID != "B" {
+		t.Errorf("First should be A or B")
+	}
+	if resQ.Results[1].ID != "C" {
+		t.Errorf("Second should be C (diversity), got %s", resQ.Results[1].ID)
+	}
+
+	// 2. BaseScoreOnly
+	// Base Scores: C=1.0, A=0.0, B=0.0
+	// Pick 1: C (1.0)
+	// Pick 2:
+	//   A: rel=0.0, sim(C,A)=0.0 -> 0.4*0 - 0.6*0 = 0
+	//   B: rel=0.0, sim(C,B)=0.0 -> 0
+	// Order: C, then A/B.
+	baseScores := map[string]float64{
+		"C": 1.0,
+		"A": 0.0,
+		"B": 0.0,
+	}
+	resB, err := db.SearchMMRWithScores(query, 3, baseScores, &MMROptions{Lambda: 0.5, ScoreMode: MMRScoreBaseOnly})
+	if err != nil {
+		t.Fatalf("SearchMMRWithScores failed: %v", err)
+	}
+	if resB.Results[0].ID != "C" {
+		t.Errorf("BaseScoreOnly: expected C first (score 1.0), got %s", resB.Results[0].ID)
+	}
+
+	// 3. Blend
+	// Base: A=0.2, B=0.0, C=1.0
+	// Alpha=0.5
+	// Rel A = 0.5*1 + 0.5*0.2 = 0.6
+	// Rel B = 0.5*1 + 0.5*0.0 = 0.5
+	// Rel C = 0.5*0 + 0.5*1.0 = 0.5
+	// Pick 1: A (0.6)
+	// Pick 2:
+	//   B: rel=0.5, sim(A,B)=1.0. MMR = lambda*0.5 - (1-lambda)*1.0.
+	//      If lambda=0.8: 0.8*0.5 - 0.2*1.0 = 0.4 - 0.2 = 0.2
+	//   C: rel=0.5, sim(A,C)=0.0. MMR = 0.8*0.5 - 0.2*0 = 0.4
+	// C (0.4) > B (0.2). So A, C, B.
+	baseScores2 := map[string]float64{
+		"A": 0.2,
+		"B": 0.0,
+		"C": 1.0,
+	}
+	resBlend, err := db.SearchMMRWithScores(query, 3, baseScores2, &MMROptions{
+		Lambda:     0.8,
+		ScoreMode:  MMRScoreBlend,
+		BlendAlpha: 0.5,
+	})
+	if err != nil {
+		t.Fatalf("SearchMMRWithScores failed: %v", err)
+	}
+	if resBlend.Results[0].ID != "A" {
+		t.Errorf("Blend: expected A first, got %s", resBlend.Results[0].ID)
+	}
+	if resBlend.Results[1].ID != "C" {
+		t.Errorf("Blend: expected C second (diversity), got %s", resBlend.Results[1].ID)
+	}
+}
+
 func TestMemoryStats(t *testing.T) {
 	db := NewVectorDB(0) // No dimension validation
 

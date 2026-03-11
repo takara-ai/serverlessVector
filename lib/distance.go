@@ -24,7 +24,8 @@ func norm32(a []float32) float64 {
 	return math.Sqrt(dotProduct32(a, a))
 }
 
-func (db *VectorDB) distanceFloat32(a, b []float32, distanceFunc DistanceFunction) float64 {
+// DistanceFloat32 computes the distance/similarity between two vectors.
+func DistanceFloat32(a, b []float32, distanceFunc DistanceFunction) float64 {
 	switch distanceFunc {
 	case CosineSimilarity:
 		dot := dotProduct32(a, b)
@@ -42,6 +43,10 @@ func (db *VectorDB) distanceFloat32(a, b []float32, distanceFunc DistanceFunctio
 	default:
 		return dotProduct32(a, b)
 	}
+}
+
+func (db *VectorDB) distanceFloat32(a, b []float32, distanceFunc DistanceFunction) float64 {
+	return DistanceFloat32(a, b, distanceFunc)
 }
 
 func sameLen32(a, b []float32) bool { return len(a) == len(b) }
