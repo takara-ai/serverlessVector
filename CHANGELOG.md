@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/takara-ai/serverlessVector/compare/v2.0.0...v2.1.0) (2026-03-11)
+
+
+### Features
+
+* **mmr:** add SelectMMRFromCandidates and SearchMMRWithScores with BaseScore/Query/Blend modes ([074cd2f](https://github.com/takara-ai/serverlessVector/commit/074cd2fa5a7006824ac206c1e573dcb646a29e76))
+
 ## [2.0.0](https://github.com/takara-ai/serverlessVector/compare/v1.0.0...v2.0.0) (2026-03-03)
 
 
