@@ -422,7 +422,9 @@ func BenchmarkSearch_Float32(b *testing.B) {
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
 		}
-		db.Add(fmt.Sprintf("vec%d", i), data)
+		if err := db.Add(fmt.Sprintf("vec%d", i), data); err != nil {
+			b.Fatal(err)
+		}
 	}
 
 	query := make([]float32, 128)
@@ -445,7 +447,9 @@ func BenchmarkSearch_512D(b *testing.B) {
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
 		}
-		db.Add(fmt.Sprintf("vec%d", i), data)
+		if err := db.Add(fmt.Sprintf("vec%d", i), data); err != nil {
+			b.Fatal(err)
+		}
 	}
 	query := make([]float32, dim)
 	for i := range query {
@@ -467,7 +471,9 @@ func BenchmarkSearch_512D_DotProduct(b *testing.B) {
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
 		}
-		db.Add(fmt.Sprintf("vec%d", i), data)
+		if err := db.Add(fmt.Sprintf("vec%d", i), data); err != nil {
+			b.Fatal(err)
+		}
 	}
 	query := make([]float32, dim)
 	for i := range query {
@@ -486,7 +492,9 @@ func BenchmarkSearchMMR_Float32(b *testing.B) {
 		for j := range data {
 			data[j] = float32((i+j)%10) * 0.1
 		}
-		db.Add(fmt.Sprintf("vec%d", i), data)
+		if err := db.Add(fmt.Sprintf("vec%d", i), data); err != nil {
+			b.Fatal(err)
+		}
 	}
 	query := make([]float32, 128)
 	for i := range query {
