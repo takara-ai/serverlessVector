@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.1.3](https://github.com/takara-ai/serverlessVector/compare/v2.1.2...v2.1.3) (2026-03-16)
+
+
+### Bug Fixes
+
+* downgrade min go version for more users! ([7ac3cf2](https://github.com/takara-ai/serverlessVector/commit/7ac3cf218e4eebe830b79f8c5ee2f123958b2aa7))
+* downgrade min go version for more users! ([cc3c851](https://github.com/takara-ai/serverlessVector/commit/cc3c851dc96ba05289b48dc4858eb79e3df167e2))
+* **test:** check db.Add error returns in benchmarks ([2aa4c8d](https://github.com/takara-ai/serverlessVector/commit/2aa4c8d0339e5215e5ddeb6619fdf417c1548983))
+
 ## [2.1.2](https://github.com/takara-ai/serverlessVector/compare/v2.1.1...v2.1.2) (2026-03-11)
 
 
